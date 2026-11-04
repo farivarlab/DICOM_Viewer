@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lumen-dicom"
+version = "0.1.0"
+description = "A local desktop DICOM viewer with linked MPR and native volume rendering"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "numpy>=2.0,<3",
+  "scipy>=1.14,<2",
+  "PySide6-Essentials>=6.8,<7",
+  "pydicom>=3.0,<4",
+  "vtk>=9.4,<10",
+  "pylibjpeg>=2,<3",
+  "pylibjpeg-openjpeg>=2,<3",
+  "python-gdcm>=3.2,<4",
+  "pyjpegls>=1.5,<2",
+  "pillow>=13,<14",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8,<10"]
+
+[project.gui-scripts]
+lumen-dicom = "lumen.app:main"
+
+[tool.setuptools.packages.find]
+include = ["lumen*"]
+
+[tool.setuptools.package-data]
+lumen = ["resources/*.svg"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

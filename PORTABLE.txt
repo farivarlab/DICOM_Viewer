@@ -1,0 +1,38 @@
+Lumen DICOM Viewer 0.1.0 - portable Windows x64
+
+Choose either release:
+- Single executable: run Lumen-0.1.0-win64.exe. It extracts its runtime to your
+  Windows temporary folder at startup. No Python installation is required.
+- Portable ZIP: extract the complete folder and run Lumen.exe. Keep _internal
+  beside the EXE. This version starts faster and its shared libraries can be replaced.
+
+Open files/folders from the toolbar or drag them into the viewer. Ctrl+O opens
+files; Ctrl+Shift+O opens a folder. The mouse wheel browses images; Ctrl+wheel
+zooms; right drag adjusts contrast; middle drag pans. Ctrl+I toggles metadata.
+Choose MPR or 3D explicitly from the layout menu. Ctrl+S exports PNG images with
+or without annotations. F1 shows all controls.
+
+All image processing is local. Input DICOM files are read only. No example
+patient studies or validation images are included in this release.
+
+Requires Windows x64 and an OpenGL-capable graphics driver for 3D. This unsigned
+development release has not been clinically validated. No installer, service,
+account, or registry registration is needed.
+
+Codec coverage: native RLE, JPEG baseline, JPEG lossless, JPEG-LS and JPEG 2000
+through the bundled pydicom/GDCM/CharLS/OpenJPEG/Pillow libraries. True 12-bit
+Extended JPEG is not supported by this bundled codec set. Unsupported data
+produces a decoding error.
+
+Third-party license texts and source links are in THIRD_PARTY (beside the
+portable-folder EXE and embedded in the single-file executable). Application
+source and build instructions are in the accompanying source repository/archive.
+The source archive is provided to permit rebuilding with modified dependencies;
+no additional license for the user's application code is granted here.
+
+Local automated verification (optional):
+Lumen.exe --self-test --report C:\Temp\lumen-check\report.json
+Lumen.exe --self-test --input C:\Scans\Study --report C:\Temp\lumen-check\report.json
+
+These checks create technical JSON reports and image previews at the chosen
+report location. Original images are not modified or transmitted.

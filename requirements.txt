@@ -1,0 +1,11 @@
+# Tested direct runtime versions; the portable build uses the same codec set.
+numpy==2.3.5
+scipy==1.18.1
+PySide6-Essentials==6.12.0
+pydicom==3.0.2
+vtk==9.7.2
+pylibjpeg==2.1.0
+pylibjpeg-openjpeg==2.6.0
+python-gdcm==3.2.6
+pyjpegls==1.5.1
+pillow==13.0.0
