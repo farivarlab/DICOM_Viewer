@@ -8,3 +8,4 @@
 *.svg text eol=lf
 # Preserve pinned upstream license bytes, including original whitespace and line endings.
 build_tools/licenses/** -text -whitespace
+lumen/resources/fluent/*.txt -text -whitespace

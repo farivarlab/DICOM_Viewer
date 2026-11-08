@@ -2,7 +2,7 @@
 
 A local Windows desktop viewer built with Python, Qt (PySide6), NumPy/SciPy, pydicom, and VTK. It includes native 3D volume rendering and linked patient-coordinate MPR. All processing happens on this computer; there are no servers, accounts, or uploads. Original DICOM files are opened read only.
 
-**Status:** development release 0.1.0, with newer source changes for themes and NIfTI support. Tested on Windows with generated fixtures and a supplied 299-slice MRI series. **Packaging is on hold:** the existing 0.1.0 executables have not been rebuilt with these changes. Run from source to use them.
+**Status:** development release 0.2.0, including themes, editable icons, colorbars and NIfTI support. Tested on Windows with generated fixtures and a supplied 299-slice MRI series. Portable builds include the native NIfTI converter and do not require Python to be installed.
 
 ## Run from source
 
@@ -97,14 +97,15 @@ In 3D, drag to orbit, middle drag to pan, and use the wheel to zoom. Display win
 
 ## Portable Windows executable
 
-The files below are the previous 0.1.0 release. New theme and NIfTI changes are currently source only; no new package has been built. Bundling and release validation for the new conversion dependency will be handled when packaging is requested.
+The portable release includes the current viewing tools, themes, colorbars, NIfTI reader/writer, and native dcm2niix converter. Older versioned artifacts can be kept alongside it.
 
 The application does not depend on its working directory, a database, installed Python, registry registration, or a service at runtime once bundled. ZIP scratch space uses the operating system's temporary directory. The source launcher locates the development environment relative to itself.
 
 The build includes Python, Qt platform/image/SVG libraries, VTK rendering modules, NumPy/SciPy, pydicom and codecs. The output directory contains:
 
-- `dist/Lumen-0.1.0-win64.exe`: single portable executable, with temporary runtime extraction at startup.
-- `dist/Lumen-0.1.0-portable-win64.zip`: extract the complete folder and run `Lumen.exe`; starts faster and keeps shared libraries replaceable.
+- `dist/Lumen-0.2.0-win64.exe`: single portable executable, with temporary runtime extraction at startup.
+- `dist/Lumen-0.2.0-portable-win64.zip`: extract the complete folder and run `Lumen.exe`; starts faster and keeps shared libraries replaceable.
+- `dist/Lumen-0.2.0-source.zip`: corresponding application source, build scripts and license.
 - `dist/SHA256SUMS.txt`: checksums for the release files.
 
 Build from 64-bit Python 3.12 on Windows with `Build-Portable.ps1`. It creates an isolated `.build-venv`, installs `requirements-build.txt`, generates icons/notices, and runs `Lumen.spec`. Source files and build scripts are in Git; studies, image exports, environments and binaries are ignored. The notice collector verifies pinned upstream notice checksums and does not use the network during the build. The build environment's DLL search path excludes unrelated local tools.
@@ -115,7 +116,7 @@ Both executable forms support an opt-in self-test, for example:
 .\Lumen.exe --self-test --input 'C:\Scans\Study' --report 'C:\Temp\LumenCheck\report.json'
 ```
 
-The checks exercise bundled Qt/resources, metadata, calibration, image export, MPR, native VTK rendering and codecs. Reports include `frozen: true` when run from a package. A clean environment/path launch is checked locally; testing on a separate clean Windows machine with representative GPU drivers is still recommended. Releases are unsigned development builds. Help → Third-party notices opens the included library notices and source links. No application license is assigned automatically.
+The checks exercise bundled Qt/resources, metadata, calibration, image export, colorbars, MPR, native VTK rendering, codecs, DICOM-to-NIfTI conversion, and 4D NIfTI loading. Reports include `frozen: true` when run from a package. A clean environment/path launch is checked locally; testing on a separate clean Windows machine with representative GPU drivers is still recommended. Releases are unsigned development builds. Help → Third-party notices opens the included library notices and source links. The application uses the MIT license in [LICENSE](LICENSE); dependencies retain their own licenses.
 
 Python is a practical starting point because VTK performs rendering in native code and the interface can evolve quickly. Its Qt/VTK distribution will be considerably larger than MicroDicom. If a very small download or minimal startup time becomes a strict requirement, C++ with Qt/VTK and a native DICOM decoder is the better long-term direction; VTK itself still adds size. No claim of a MicroDicom-sized executable is made.
 

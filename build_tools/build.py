@@ -65,16 +65,28 @@ def finalize_release(material):
     dist = ROOT / "dist"
     folder = dist / f"Lumen-{__version__}-portable-win64"
     shutil.copy2(ROOT / "PORTABLE.txt", folder / "READ-ME.txt")
+    shutil.copy2(ROOT / "logo.svg", folder / "logo.svg")
+    if (ROOT / "LICENSE").is_file():
+        shutil.copy2(ROOT / "LICENSE", folder / "LICENSE.txt")
     shutil.copytree(material / "THIRD_PARTY", folder / "THIRD_PARTY", dirs_exist_ok=True)
     shutil.make_archive(str(folder), "zip", root_dir=dist, base_dir=folder.name)
-    files = [dist / f"Lumen-{__version__}-win64.exe", Path(str(folder) + ".zip")]
+    source_zip = dist / f"Lumen-{__version__}-source.zip"
+    subprocess.run(["git", "-c", f"safe.directory={ROOT.as_posix()}", "-C", str(ROOT), "archive", "--format=zip",
+                    f"--output={source_zip}", "HEAD"], check=True)
+    shutil.copy2(ROOT / "logo.svg", dist / "logo.svg")
+    shutil.copy2(ROOT / "PORTABLE.txt", dist / "READ-ME.txt")
+    if (ROOT / "LICENSE").is_file():
+        shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")
+    files = [dist / f"Lumen-{__version__}-win64.exe", Path(str(folder) + ".zip"), source_zip]
     def sha256(path):
         with path.open("rb") as stream:
             return hashlib.file_digest(stream, "sha256").hexdigest()
     checksum = "\n".join(f"{sha256(path)}  {path.name}" for path in files) + "\n"
     (dist / "SHA256SUMS.txt").write_text(checksum, encoding="ascii")
+    (dist / f"SHA256SUMS-{__version__}.txt").write_text(checksum, encoding="ascii")
     versions = subprocess.check_output([sys.executable, "-m", "pip", "freeze"], text=True)
     (dist / "BUILD-DEPENDENCIES.txt").write_text(versions, encoding="utf-8")
+    (dist / f"BUILD-DEPENDENCIES-{__version__}.txt").write_text(versions, encoding="utf-8")
     print(json.dumps({path.name: {"bytes": path.stat().st_size, "sha256": sha256(path)}
                       for path in files}, indent=2))
 

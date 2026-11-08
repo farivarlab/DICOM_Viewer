@@ -16,7 +16,7 @@ import sys
 
 RUNTIME_DISTRIBUTIONS = (
     "numpy", "scipy", "PySide6-Essentials", "shiboken6", "pydicom", "vtk",
-    "pylibjpeg", "pylibjpeg-openjpeg", "python-gdcm", "pyjpegls", "Pillow",
+    "pylibjpeg", "pylibjpeg-openjpeg", "python-gdcm", "pyjpegls", "Pillow", "nibabel", "dcm2niix",
 )
 NOTICE_WORDS = ("license", "licence", "copying", "copyright", "notice", "authors")
 VENDORED = Path(__file__).resolve().parent / "licenses"
@@ -114,6 +114,11 @@ def generate_notices(target: Path) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(source, destination)
     shutil.copyfile(manifest_file, target / "upstream_manifest.json")
+    icon_notices = Path(__file__).resolve().parents[1] / "lumen" / "resources" / "fluent"
+    icon_target = target / "Fluent-System-Icons"
+    icon_target.mkdir(exist_ok=True)
+    for name in ("LICENSE.txt", "NOTICE.txt", "README.txt", "manifest.json"):
+        shutil.copyfile(icon_notices / name, icon_target / name)
     if not any("LGPL-3.0" in entry["local_file"] for entry in vendor_files):
         raise RuntimeError("Qt's LGPLv3 text is missing from vendored notices")
     if not any(Path(entry["local_file"]).name.startswith("GPL-3.0") for entry in vendor_files):
@@ -129,6 +134,7 @@ def generate_notices(target: Path) -> None:
         "packages": packages,
         "vendored_provenance": "upstream_manifest.json",
         "vendored_notice_count": len(vendor_files),
+        "icon_notices": "Fluent-System-Icons/LICENSE.txt",
     }
     (target / "INDEX.json").write_text(json.dumps(index, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
     lines = [
@@ -142,6 +148,7 @@ def generate_notices(target: Path) -> None:
     lines.extend(f"- {item['distribution']} {item['version']}: {item['version_page']}" for item in packages)
     lines.extend([
         f"- CPython {sys.version.split()[0]}: Python/LICENSE.txt", "",
+        "- Microsoft Fluent System Icons (MIT): Fluent-System-Icons/LICENSE.txt", "",
         "Qt/PySide/Shiboken upstream metadata offers LGPLv3/GPL alternatives. The corresponding license texts and",
         "Qt source notices are retained under upstream/. Qt source repositories and exact refs are in upstream_manifest.json.",
         "Qt shared libraries remain separate runtime binaries in the portable folder; source/rebuild materials are supplied with the release.",

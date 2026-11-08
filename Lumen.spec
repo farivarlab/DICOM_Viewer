@@ -1,9 +1,15 @@
 # Reproducible Windows x64 one-file and one-folder builds, from an isolated environment.
 from pathlib import Path
+import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 ROOT = Path(SPECPATH)
-VERSION = "0.1.0"
+sys.path.insert(0, str(ROOT))
+from lumen import __version__ as VERSION
+import dcm2niix
+converter = Path(dcm2niix.__file__).resolve().parent / "dcm2niix.exe"
+if not converter.is_file():
+    raise RuntimeError("The Windows dcm2niix converter is missing from the build environment")
 material = ROOT / "build" / "release_materials"
 hidden = ["gdcm", "_gdcm.gdcmswig", "_gdcm._gdcmswig", "jpeg_ls", "_CharLS"]
 hidden += collect_submodules("openjpeg")
@@ -12,13 +18,13 @@ data = collect_data_files("lumen", includes=["resources/*.svg", "resources/fluen
 data += collect_data_files("lumen", includes=["resources/themes/*.json", "resources/themes/*.qss", "resources/glyphs/*.svg"])
 data += [(str(ROOT / "logo.svg"), "lumen/resources")]
 data += collect_data_files("_gdcm", includes=["XML/*"])
-for package in ("pylibjpeg", "pylibjpeg-openjpeg", "pyjpegls", "python-gdcm", "pydicom"):
+for package in ("pylibjpeg", "pylibjpeg-openjpeg", "pyjpegls", "python-gdcm", "pydicom", "nibabel", "dcm2niix"):
     data += copy_metadata(package)
 data += [(str(material / "THIRD_PARTY"), "THIRD_PARTY")]
 
 a = Analysis(
     [str(ROOT / "launch_lumen.py")], pathex=[str(ROOT)],
-    binaries=[], datas=data, hiddenimports=hidden, hookspath=[], runtime_hooks=[],
+    binaries=[(str(converter), "dcm2niix")], datas=data, hiddenimports=hidden, hookspath=[], runtime_hooks=[],
     excludes=["matplotlib", "IPython", "pytest", "tkinter", "PyQt5", "PyQt6", "PySide2", "libjpeg"],
     noarchive=False,
 )
