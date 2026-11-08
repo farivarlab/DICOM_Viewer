@@ -56,7 +56,7 @@ class CaseBrowser(QTreeWidget):
         self.series = {series.uid: series for series in series_list}
         self.loaded = loaded
         patients, studies = {}, {}
-        for series in series_list:
+        for series in sorted(series_list, key=lambda s: s.sort_key):
             patient_key = (series.patient_issuer, series.patient_id or series.patient)
             if patient_key not in patients:
                 name = series.patient + (f" · {series.patient_id}" if series.patient_id else "")
@@ -73,14 +73,16 @@ class CaseBrowser(QTreeWidget):
                 case.setToolTip(0, f"Case: {name}" + (f"\nAccession: {series.accession}" if series.accession else ""))
                 case.setExpanded(True)
                 studies[case_key] = case
-            item = QTreeWidgetItem(studies[case_key], [f"{series.modality} · {series.description} ({series.frames})"])
+            item = QTreeWidgetItem(studies[case_key], [series.browser_label])
             item.setIcon(0, self._icons["series"])
             item.setData(0, ROLE, Target(series.uid, "series"))
-            item.setToolTip(0, f"{series.title}\n{series.frames:,} images · {len(series.paths):,} files")
+            number = f"Series {series.number}\n" if series.number is not None else ""
+            item.setToolTip(0, f"{number}{series.title}\n{series.frames:,} images · {len(series.paths):,} files")
             item.setChildIndicatorPolicy(QTreeWidgetItem.ChildIndicatorPolicy.ShowIndicator)
             self.series_items[series.uid] = item
             self._search_text[series.uid] = " ".join((series.patient, series.patient_id, series.study,
-                series.date, series.accession, series.modality, series.description)).casefold()
+                series.date, series.accession, series.modality, series.description,
+                f"series {series.number}" if series.number is not None else "")).casefold()
         self.blockSignals(previous)
         self.setUpdatesEnabled(True)
         if loaded:
@@ -90,6 +92,12 @@ class CaseBrowser(QTreeWidget):
         target = current.data(0, ROLE) if current else None
         if target and target.kind in ("series", "file", "frame"):
             self.requested.emit(target)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        current = self.currentItem()
+        if current is not None:
+            self.scrollToItem(current, QAbstractItemView.ScrollHint.EnsureVisible)
 
     def _expanded(self, item):
         target = item.data(0, ROLE)
@@ -187,8 +195,9 @@ class CaseBrowser(QTreeWidget):
         self._discard_files(uid)
         self._files(uid)
         item = self.series_items[uid]
-        item.setText(0, f"{data.series.modality} · {data.series.description} ({len(data.source)})")
-        item.setToolTip(0, f"{data.series.title}\n{len(data.source):,} displayed images · {len(self._order(uid)):,} files")
+        item.setText(0, data.series.browser_label)
+        number = f"Series {data.series.number}\n" if data.series.number is not None else ""
+        item.setToolTip(0, f"{number}{data.series.title}\n{len(data.source):,} displayed images · {len(self._order(uid)):,} files")
         item.setExpanded(True)
         self.blockSignals(previous)
 

@@ -1,3 +1,3 @@
-from .app import main
+from .startup import main
 
 raise SystemExit(main())

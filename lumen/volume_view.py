@@ -2,7 +2,8 @@
 from __future__ import annotations
 import numpy as np
 from PySide6.QtCore import Qt, QTimer
-from PySide6.QtWidgets import QWidget, QVBoxLayout, QLabel
+from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
+from .colorbar import ColorBar, ColorScale, append_colorbar
 
 
 class VolumeView(QWidget):
@@ -10,14 +11,24 @@ class VolumeView(QWidget):
         super().__init__(parent)
         self.layout = QVBoxLayout(self)
         self.layout.setContentsMargins(0, 0, 0, 0)
-        self.label = QLabel("3D VOLUME    ·    Drag to orbit · wheel to zoom")
+        self.label = QLabel("3D view · Drag to rotate · Wheel to zoom")
         self.label.setObjectName("volumeTitle")
-        self.label.setMargin(12)
+        self.label.setMargin(6)
         self.layout.addWidget(self.label)
         self.placeholder = QLabel("Open a spatial series to render a volume")
         self.placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.layout.addWidget(self.placeholder, 1)
+        self.viewport_row = QHBoxLayout()
+        self.viewport_row.setContentsMargins(0, 0, 0, 0)
+        self.viewport_row.setSpacing(0)
+        self.viewport_row.addWidget(self.placeholder, 1)
+        self.colorbar = ColorBar(self)
+        self.colorbar.setToolTip("Volume transfer colors. Rendered brightness also depends on opacity and lighting.")
+        self.colorbar.hide()
+        self.viewport_row.addWidget(self.colorbar)
+        self.layout.addLayout(self.viewport_row, 1)
+        self.show_colorbar = True
         self.vtk_widget = None
+        self.vtk_image = None
         self.data = None
         self.preset = "CT tissue"
         self.blend = "Composite"
@@ -47,11 +58,9 @@ class VolumeView(QWidget):
 
         self.placeholder.hide()
         self.vtk_widget = QVTKRenderWindowInteractor(self)
-        self.layout.addWidget(self.vtk_widget, 1)
+        self.viewport_row.insertWidget(0, self.vtk_widget, 1)
         self.renderer = vtkRenderer()
-        self.renderer.SetBackground(.025, .04, .065)
-        self.renderer.SetBackground2(.06, .095, .14)
-        self.renderer.GradientBackgroundOn()
+        self.renderer.SetBackground(.04, .04, .04)
         window = self.vtk_widget.GetRenderWindow()
         window.SetMultiSamples(0)
         window.AddRenderer(self.renderer)
@@ -88,6 +97,7 @@ class VolumeView(QWidget):
     def set_volume(self, data):
         self.data = data
         if not data.mpr_ready:
+            self.colorbar.hide()
             self.placeholder.setText(data.geometry_note)
             if self.vtk_widget:
                 self.volume.SetVisibility(False)
@@ -123,6 +133,11 @@ class VolumeView(QWidget):
         self.vtk_image = None
         self._image_ref = None
         self._loaded_uid = None
+        self.colorbar.hide()
+
+    def set_colorbar_visible(self, visible):
+        self.show_colorbar = bool(visible)
+        self.colorbar.setVisible(self.show_colorbar and self.vtk_image is not None)
 
     def schedule_render(self):
         if not self.render_timer.isActive():
@@ -146,13 +161,17 @@ class VolumeView(QWidget):
                      (-200, (.9, .65, .5), .01), (500, (1, 1, .9), .1), (2000, (1, 1, 1), .6)]
         else:
             lo, hi = self._scalar_range
-            hi = max(hi, lo + 1)
+            hi = max(hi, lo + self.data.window_minimum)
             stops = [(lo, (0, 0, 0), 0), (lo + .3 * (hi - lo), (.3, .25, .5), .01),
                      (lo + .65 * (hi - lo), (.9, .6, .3), .12), (hi, (1, .95, .85), .6)]
         for value, color, alpha in stops:
             colors.AddRGBPoint(value, *color)
             opacity.AddPoint(value, min(1, alpha * self.opacity))
         self.prop.SetColor(colors)
+        low, high = colors.GetRange()
+        rgb = np.round([np.asarray(colors.GetColor(float(value))) * 255 for value in np.linspace(low, high, 256)]).astype(np.uint8)
+        self.colorbar.set_scale(ColorScale(rgb, low, high, self.data.units))
+        self.colorbar.setVisible(self.show_colorbar)
         self.prop.SetScalarOpacity(opacity)
         self.prop.SetScalarOpacityUnitDistance(min(self.data.canonical_spacing))
         self.prop.SetShade(self.blend == "Composite")
@@ -193,7 +212,7 @@ class VolumeView(QWidget):
         if self.vtk_widget is not None and self.isVisible():
             self.vtk_widget.GetRenderWindow().Render()
 
-    def capture(self):
+    def capture(self, include_colorbar=None):
         if self.vtk_widget is None:
             return None
         from vtkmodules.vtkRenderingCore import vtkWindowToImageFilter
@@ -207,7 +226,11 @@ class VolumeView(QWidget):
         image = capture.GetOutput()
         w, h, _ = image.GetDimensions()
         array = vtk_to_numpy(image.GetPointData().GetScalars()).reshape(h, w, -1)[::-1].copy()
-        return QImage(array.data, w, h, array.strides[0], QImage.Format.Format_RGB888).copy()
+        result = QImage(array.data, w, h, array.strides[0], QImage.Format.Format_RGB888).copy()
+        include_colorbar = self.show_colorbar if include_colorbar is None else include_colorbar
+        if include_colorbar and self.colorbar.scale is not None and self.vtk_image is not None:
+            return append_colorbar(result, self.colorbar.scale, w / max(1, self.vtk_widget.width()))
+        return result
 
     def shutdown(self):
         self.render_timer.stop()

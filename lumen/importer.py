@@ -2,7 +2,7 @@ from pathlib import Path
 import tempfile
 import zipfile
 
-from .model import scan_paths
+from .nifti import scan_inputs
 
 MAX_ARCHIVE_BYTES = 4 * 1024**3
 
@@ -28,7 +28,8 @@ def import_paths(paths, progress=lambda _: None):
                     if entry.flag_bits & 1:
                         raise ValueError("Password-protected ZIPs are not supported. Extract the archive first.")
                     # No archive-controlled folder paths or symbolic links are created.
-                    suffix = Path(entry.filename.replace("\\", "/")).suffix[:16]
+                    name = entry.filename.replace("\\", "/")
+                    suffix = ".nii.gz" if name.lower().endswith(".nii.gz") else Path(name).suffix[:16]
                     target = root / f"image_{i:06d}{suffix}"
                     with archive.open(entry) as source, target.open("wb") as destination:
                         while chunk := source.read(1024 * 1024):
@@ -37,7 +38,7 @@ def import_paths(paths, progress=lambda _: None):
                                 raise ValueError("ZIP extraction exceeded the 4 GB limit.")
                             destination.write(chunk)
             expanded.append(root)
-        return scan_paths(expanded, progress), temporaries
+        return scan_inputs(expanded, progress), temporaries
     except Exception:
         for folder in temporaries:
             folder.cleanup()

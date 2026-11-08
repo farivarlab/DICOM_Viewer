@@ -1,10 +1,14 @@
-"""Original 24-unit vector glyphs for the workstation's commands."""
+"""Fluent System Icons (MIT) and original glyphs for specialist imaging tools."""
 from functools import lru_cache
+from pathlib import Path
 from PySide6.QtCore import QByteArray, Qt
 from PySide6.QtGui import QIcon, QPixmap, QPainter
 from PySide6.QtSvg import QSvgRenderer
 
 GLYPHS = {
+    "colorbar": '<path d="M5 3h8v18H5Z M5 7h8 M5 12h8 M5 17h8 M16 3h5 M16 12h3 M16 21h5"/>',
+    "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v3 M12 19v3 M2 12h3 M19 12h3 M5 5l2 2 M17 17l2 2 M5 19l2-2 M17 7l2-2"/>',
+    "moon": '<path d="M20 15A9 9 0 0 1 9 3a9 9 0 1 0 11 12Z"/>',
     "open": '<path d="M14 3H5v18h14V8Z M14 3v5h5 M8 14h8 m-3-3 3 3-3 3"/>',
     "folder": '<path d="M3 7V5h7l2 2h9v13H3Z M3 10h18"/>',
     "demo": '<path d="m12 2 9 5v10l-9 5-9-5V7Z M3 7l9 5 9-5 M12 12v10"/><path d="m8 5 9 5"/>',
@@ -47,17 +51,58 @@ GLYPHS = {
 }
 
 
-@lru_cache(maxsize=128)
+_theme = "light"
+_palette = ("#323232", "#527f80", "#999999", "#18393a")
+_icon_specs = {}
+FLUENT_ROOT = Path(__file__).resolve().parent / "resources" / "fluent"
+FLUENT_GLYPHS = frozenset((
+    "open", "folder", "demo", "sun", "moon", "pan", "zoom", "fit", "reset", "rotate",
+    "clear", "play", "pause", "save", "copy", "tags", "fullscreen", "camera", "help",
+    "info", "exit", "close", "export", "patient", "case", "series", "image", "previous", "next",
+))
+
+
+@lru_cache(maxsize=40)
+def _fluent_svg(name):
+    return (FLUENT_ROOT / f"{name}.svg").read_text(encoding="utf-8")
+
+
+def _svg(name, ink):
+    if name in FLUENT_GLYPHS:
+        return _fluent_svg(name).replace('fill="#212121"', f'fill="{ink}"').replace('fill="currentColor"', f'fill="{ink}"')
+    return (f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" '
+            f'fill="none" stroke="{ink}" color="{ink}" stroke-width="1.6" '
+            f'stroke-linecap="square" stroke-linejoin="miter">{GLYPHS[name]}</svg>')
+
+
+def set_icon_theme(name, colors=None):
+    global _theme, _palette
+    _theme = name
+    if colors:
+        _palette = (colors["glyph_foreground"], colors["accent"], colors["glyph_disabled"], colors["selected_text"])
+
+
 def icon(name: str, size: int = 20, color: str | None = None) -> QIcon:
+    result = _render_icon(name, size, color, _palette)
+    _icon_specs[result.cacheKey()] = (name, size, color)
+    return result
+
+
+def retheme_icon(current):
+    spec = _icon_specs.get(current.cacheKey())
+    return icon(*spec) if spec else current
+
+
+@lru_cache(maxsize=256)
+def _render_icon(name, size, color, palette):
     if name not in GLYPHS:
         raise KeyError(f"Unknown glyph: {name}")
     result = QIcon()
-    for mode, mode_color in ((QIcon.Mode.Normal, "#4b6475"), (QIcon.Mode.Active, "#126b5e"),
-                        (QIcon.Mode.Selected, "#126b5e"), (QIcon.Mode.Disabled, "#a8b4be")):
+    normal, accent, disabled, selected = palette
+    for mode, mode_color in ((QIcon.Mode.Normal, normal), (QIcon.Mode.Active, accent),
+                        (QIcon.Mode.Selected, selected), (QIcon.Mode.Disabled, disabled)):
         ink = color if color and mode != QIcon.Mode.Disabled else mode_color
-        svg = (f'<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" '
-               f'fill="none" stroke="{ink}" color="{ink}" stroke-width="1.6" '
-               f'stroke-linecap="square" stroke-linejoin="miter">{GLYPHS[name]}</svg>')
+        svg = _svg(name, ink)
         renderer = QSvgRenderer(QByteArray(svg.encode()))
         pixmap = QPixmap(size * 2, size * 2)
         pixmap.fill(Qt.GlobalColor.transparent)
@@ -66,9 +111,9 @@ def icon(name: str, size: int = 20, color: str | None = None) -> QIcon:
         painter.end()
         pixmap.setDevicePixelRatio(2)
         result.addPixmap(pixmap, mode)
-        # Checked tools retain the teal glyph even without mouse hover.
+        # Checked tools retain the selection color even without mouse hover.
         if mode != QIcon.Mode.Disabled:
-            checked = svg.replace(ink, color or "#126b5e")
+            checked = svg.replace(ink, color or accent)
             checked_renderer = QSvgRenderer(QByteArray(checked.encode()))
             checked_pixmap = QPixmap(size * 2, size * 2)
             checked_pixmap.fill(Qt.GlobalColor.transparent)
@@ -78,6 +123,11 @@ def icon(name: str, size: int = 20, color: str | None = None) -> QIcon:
             checked_pixmap.setDevicePixelRatio(2)
             result.addPixmap(checked_pixmap, mode, QIcon.State.On)
     return result
+
+
+def clear_icon_cache():
+    _fluent_svg.cache_clear()
+    _render_icon.cache_clear()
 
 
 ACTION_ICONS = {
@@ -90,4 +140,9 @@ ACTION_ICONS = {
     "Ellipse": "ellipse", "Angle": "angle", "Arrow": "arrow", "Text": "text", "Exit": "exit",
     "Controls": "help", "About Lumen": "info",
     "Third-party notices": "info",
+    "Light theme": "sun", "Dark theme": "moon",
+    "Export NIfTI…": "export",
+    "Colorbar": "colorbar",
+    "Modern dark": "moon", "Modern light": "sun", "Classic light": "sun", "Classic dark": "moon",
+    "Reload appearance assets": "reset", "Open logo folder": "folder", "Open theme folder": "folder",
 }

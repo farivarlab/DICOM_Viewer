@@ -9,3 +9,5 @@ pylibjpeg-openjpeg==2.6.0
 python-gdcm==3.2.6
 pyjpegls==1.5.1
 pillow==13.0.0
+nibabel==5.4.2
+dcm2niix==1.0.20261029

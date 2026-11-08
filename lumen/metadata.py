@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QTableView, QAbstractItemView, QHeaderView, QFileDialog, QMessageBox,
 )
 from .icons import icon
+from .dialogs import QFileDialog, QMessageBox
 
 
 class MetadataModel(QAbstractTableModel):
@@ -15,10 +16,12 @@ class MetadataModel(QAbstractTableModel):
         super().__init__(parent)
         self.rows = []
         self.search_rows = []
+        self.headers = list(self.HEADERS)
 
-    def set_rows(self, rows):
+    def set_rows(self, rows, headers=None):
         self.beginResetModel()
         self.rows = rows
+        self.headers = list(headers or self.HEADERS)
         self.search_rows = [" ".join(values).casefold() for values in rows]
         self.endResetModel()
 
@@ -39,7 +42,7 @@ class MetadataModel(QAbstractTableModel):
         if role != Qt.ItemDataRole.DisplayRole:
             return None
         if orientation == Qt.Orientation.Horizontal:
-            return self.HEADERS[section] if 0 <= section < len(self.HEADERS) else None
+            return self.headers[section] if 0 <= section < len(self.headers) else None
         return section + 1
 
 
@@ -99,6 +102,8 @@ class MetadataPane(QWidget):
 
     def set_dataset(self, dataset, caption):
         self.caption.setText(caption)
+        self.search.setPlaceholderText("Filter DICOM tags…")
+        self.table.setColumnHidden(1, False)
         if dataset is self.dataset:
             return
         self.dataset = dataset
@@ -121,13 +126,24 @@ class MetadataPane(QWidget):
     def filter(self, query):
         self.proxy.set_query(query)
 
+    def set_fields(self, fields, caption):
+        self.caption.setText(caption)
+        self.search.setPlaceholderText("Filter NIfTI fields…")
+        self.table.setColumnHidden(1, True)
+        if fields is self.dataset:
+            return
+        self.dataset = fields
+        self.rows = [(str(key), "", type(value).__name__, str(value)) for key, value in fields.items()]
+        self.model.set_rows(self.rows, ("Field", "Description", "Type", "Value"))
+        self.filter(self.search.text())
+
     def export(self):
         path, _ = QFileDialog.getSaveFileName(self, "Export metadata", "metadata.csv", "CSV (*.csv)")
         if path:
             try:
                 with open(path, "w", newline="", encoding="utf-8-sig") as stream:
                     writer = csv.writer(stream)
-                    writer.writerow(["Tag", "Name", "VR", "Value"])
+                    writer.writerow(["Tag", "Name", "VR", "Value"] if self.model.headers == list(self.model.HEADERS) else self.model.headers)
                     writer.writerows(tuple("'" + v if v.startswith(("=", "+", "-", "@")) else v for v in row) for row in self.rows)
             except OSError as exc:
                 QMessageBox.warning(self, "Export failed", str(exc))

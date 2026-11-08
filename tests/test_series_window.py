@@ -68,9 +68,9 @@ def test_series_auto_window_is_calculated_only_once(monkeypatch):
     calls = []
     original = model._auto_window
 
-    def measured(pixels):
+    def measured(pixels, *args, **kwargs):
         calls.append(pixels.shape)
-        return original(pixels)
+        return original(pixels, *args, **kwargs)
 
     monkeypatch.setattr(model, "_auto_window", measured)
     windows = [data.frame_window(i) for i in range(4)]

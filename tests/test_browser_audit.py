@@ -130,4 +130,4 @@ def test_loaded_order_and_counts_follow_actual_decoded_references(browser):
     branch = browser.series_items[item.uid]
     assert branch.childCount() == 2
     assert branch.child(0).data(0, ROLE).path == item.paths[2]
-    assert branch.text(0).endswith("(2)")
+    assert "2 displayed images" in branch.toolTip(0)

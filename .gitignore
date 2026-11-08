@@ -10,3 +10,10 @@ artifacts/
 *.dcm
 *.dicom
 DICOMDIR
+.lumen-settings.ini
+*.nii
+*.nii.gz
+*.bval
+*.bvec
+.cache/
+*.lnk

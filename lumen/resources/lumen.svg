@@ -1,6 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
-  <path fill="#187b6c" d="M0 0h256v256H0z"/>
-  <path fill="none" stroke="#bce3d8" stroke-width="10" d="M30 80V30h50M176 30h50v50M226 176v50h-50M80 226H30v-50"/>
-  <path fill="none" stroke="#fff" stroke-width="18" d="M86 67v112h92"/>
-  <path fill="none" stroke="#90cdbb" stroke-width="8" d="M132 67h46v66"/>
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32">
+  <title>Lumen DICOM Viewer</title>
+  <desc>Editable stacked image frames and a scan cross-section.</desc>
+  <rect id="background" x="0.5" y="0.5" width="31" height="31" fill="#202020" stroke="#536a8e"/>
+  <path id="back-frame" d="M6 23H4.5V4.5H23V6" fill="none" stroke="#9ca9b8" stroke-width="1.5"/>
+  <rect id="front-frame" x="8" y="8" width="19" height="19" fill="#202020" stroke="#dddddd" stroke-width="1.5"/>
+  <ellipse id="scan-outline" cx="17.5" cy="17.5" rx="5.5" ry="6.5" fill="none" stroke="#dddddd" stroke-width="1.5"/>
+  <path id="scan-center" d="M17.5 11v13M12 17.5h11" fill="none" stroke="#86aaaa" stroke-width="1"/>
 </svg>

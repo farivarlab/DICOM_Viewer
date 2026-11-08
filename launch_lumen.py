@@ -21,7 +21,7 @@ def main():
             report.write_text(json.dumps({"status": "failed", "error_type": type(exc).__name__,
                                           "error": str(exc)}, indent=2), encoding="utf-8")
             return 1
-    from lumen.app import main as viewer_main
+    from lumen.startup import main as viewer_main
     return viewer_main()
 
 

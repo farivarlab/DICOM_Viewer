@@ -22,7 +22,8 @@ def icon_file(material):
     image = QImage(256, 256, QImage.Format.Format_ARGB32)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
-    QSvgRenderer(str(ROOT / "lumen" / "resources" / "lumen.svg")).render(painter)
+    from lumen.branding import logo_file
+    QSvgRenderer(str(logo_file())).render(painter)
     painter.end()
     image.save(str(material / "lumen.png"))
     with Image.open(material / "lumen.png") as png:

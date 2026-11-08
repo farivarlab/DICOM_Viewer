@@ -18,19 +18,21 @@ dependencies = [
   "python-gdcm>=3.2,<4",
   "pyjpegls>=1.5,<2",
   "pillow>=13,<14",
+  "nibabel>=5.4,<6",
+  "dcm2niix>=1.0.20260724",
 ]
 
 [project.optional-dependencies]
 dev = ["pytest>=8,<10"]
 
 [project.gui-scripts]
-lumen-dicom = "lumen.app:main"
+lumen-dicom = "lumen.startup:main"
 
 [tool.setuptools.packages.find]
 include = ["lumen*"]
 
 [tool.setuptools.package-data]
-lumen = ["resources/*.svg"]
+lumen = ["resources/*.svg", "resources/fluent/*.svg", "resources/fluent/*.txt", "resources/fluent/*.json", "resources/themes/*.json", "resources/themes/*.qss", "resources/glyphs/*.svg"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

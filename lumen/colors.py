@@ -22,8 +22,11 @@ def lookup_table(name: str, inverted: bool = False) -> np.ndarray:
     return lut[::-1].copy() if inverted else lut
 
 
-def window_pixels(pixels: np.ndarray, width: float, level: float) -> np.ndarray:
-    """DICOM LINEAR windowing (including the width=1 threshold case)."""
+def window_pixels(pixels: np.ndarray, width: float, level: float, dicom: bool = True) -> np.ndarray:
+    """DICOM LINEAR windowing, or a continuous scalar window for NIfTI."""
+    if not dicom:
+        values = (np.asarray(pixels, dtype=np.float32) - level) / max(float(width), 1e-6) + .5
+        return (np.clip(values, 0, 1) * 255).astype(np.uint8)
     width = max(float(width), 1.0)
     if width == 1:
         return np.where(pixels > level - 0.5, 255, 0).astype(np.uint8)

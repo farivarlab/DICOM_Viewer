@@ -56,7 +56,7 @@ def _pixel_spacing(value):
     return result if result is not None and np.all(result > 0) else None
 
 
-def _auto_window(pixels):
+def _auto_window(pixels, minimum=1.):
     array = np.asarray(pixels)
     stride = max(1, math.ceil(array.size / MAX_WINDOW_SAMPLES))
     # Do not flatten-copy an entire non-contiguous volume just to sample it.
@@ -69,7 +69,7 @@ def _auto_window(pixels):
         # A small foreground can occupy less than one percent of a mostly blank stack.
         # Avoid a threshold window when the sampled series still has a real range.
         lo, hi = finite.min(), finite.max()
-    return max(1., float(hi - lo)), float((lo + hi) / 2)
+    return max(minimum, float(hi - lo)), float((lo + hi) / 2)
 
 
 def _units(ds, frame):
@@ -110,10 +110,26 @@ class Series:
     study_uid: str = ""
     accession: str = ""
     files: dict[Path, FileInfo] = field(default_factory=dict)
+    source_format: str = "DICOM"
+    source_path: Path | None = None
+    volume_index: int = 0
+    number: int | None = None
 
     @property
     def title(self):
         return f"{self.modality}  ·  {self.description}"
+
+    @property
+    def browser_label(self):
+        prefix = f"{self.number} · " if self.number is not None else ""
+        return f"{prefix}{self.modality} · {self.description}"
+
+    @property
+    def sort_key(self):
+        return (self.patient.casefold(), self.patient_id, self.patient_issuer, self.date,
+                self.study.casefold(), self.study_uid, self.number is None,
+                self.number if self.number is not None else self.volume_index,
+                self.description.casefold(), self.uid)
 
 
 @dataclass
@@ -156,13 +172,18 @@ def scan_paths(paths: list[Path], progress: Progress = lambda _: None) -> ScanRe
                 groups[uid].patient_issuer = str(getattr(ds, "IssuerOfPatientID", ""))
                 groups[uid].study_uid = str(getattr(ds, "StudyInstanceUID", ""))
                 groups[uid].accession = str(getattr(ds, "AccessionNumber", ""))
+            if groups[uid].number is None:
+                try:
+                    groups[uid].number = int(ds.SeriesNumber)
+                except (AttributeError, TypeError, ValueError, OverflowError):
+                    pass
             groups[uid].paths.append(path)
             count = int(getattr(ds, "NumberOfFrames", 1))
             groups[uid].frames += count
             groups[uid].files[path] = FileInfo(path, count, int(first_number(getattr(ds, "InstanceNumber", 0), 0)))
         except (OSError, ValueError, EOFError, AttributeError, TypeError):
             skipped += 1
-    return ScanResult(sorted(groups.values(), key=lambda s: (s.patient, s.date, s.description)), skipped)
+    return ScanResult(sorted(groups.values(), key=lambda s: s.sort_key), skipped)
 
 
 @dataclass
@@ -189,6 +210,8 @@ class ImageVolume:
     _mpr_valid: bool = False
     _window_cache: dict[int, tuple[float, float]] = field(default_factory=dict, repr=False)
     _series_window: tuple[float, float] | None = field(default=None, repr=False)
+    format_metadata: dict = field(default_factory=dict)
+    geometry_unit: str = "mm"
 
     def reference(self, index: int) -> FrameReference:
         return self.references[index] if self.references else FrameReference(None, index)
@@ -197,6 +220,8 @@ class ImageVolume:
         return self.headers.get(self.reference(index).path, self.dataset)
 
     def frame_calibrated(self, index: int) -> bool:
+        if self.series.source_format != "DICOM":
+            return self.calibrated
         ref = self.reference(index)
         spacing = functional(self.header(index), ref.frame, "PixelMeasuresSequence", "PixelSpacing")
         return _pixel_spacing(spacing) is not None
@@ -209,11 +234,13 @@ class ImageVolume:
     def frame_units(self, index: int) -> str:
         if self.is_color:
             return "RGB"
-        if not self.references:
+        if not self.references or self.series.source_format != "DICOM":
             return self.units
         return _units(self.header(index), self.reference(index).frame)
 
     def frame_window(self, index: int) -> tuple[float, float]:
+        if self.series.source_format != "DICOM":
+            return self.series_window()
         if index not in self._window_cache:
             ref, ds = self.reference(index), self.header(index)
             width = first_number(functional(ds, ref.frame, "FrameVOILUTSequence", "WindowWidth"), float("nan"))
@@ -225,10 +252,14 @@ class ImageVolume:
             self._window_cache[index] = (max(1., width), level)
         return self._window_cache[index]
 
+    @property
+    def window_minimum(self):
+        return 1. if self.series.source_format == "DICOM" else 1e-6
+
     def series_window(self) -> tuple[float, float]:
         """A stable fallback for images without DICOM window settings."""
         if self._series_window is None:
-            self._series_window = _auto_window(self.source)
+            self._series_window = _auto_window(self.source, self.window_minimum)
         return self._series_window
 
     def frame_inverted(self, index: int) -> bool:

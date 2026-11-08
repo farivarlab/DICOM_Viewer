@@ -1,86 +1,199 @@
+"""Load the desktop's editable JSON palettes and Qt stylesheet assets."""
+
+from dataclasses import dataclass
+import json
 from pathlib import Path
+import re
+
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor, QFont, QPalette
 
 
-STYLE = """
-QWidget { background: #f5f7f9; color: #273847; font-family: 'Segoe UI'; font-size: 12px; }
-QMainWindow { background: #e4e9ee; }
-QMenuBar, QMenu { background: #ffffff; }
-QMenuBar::item:selected, QMenu::item:selected { background: #e0efeb; color: #145d54; }
-QToolBar { background: #ffffff; border: none; border-bottom: 1px solid #d4dde4; spacing: 4px; padding: 5px; }
-QToolButton { background: transparent; border: 1px solid transparent; border-radius: 0; padding: 6px 8px; }
-QToolButton:hover { background: #edf2f5; }
-QToolButton:pressed { background: #d9e5e9; border-color: #8196a5; }
-QToolButton:checked { background: #d9eee6; color: #125f54; border-color: #3b8877; }
-QToolButton:checked:hover { background: #c9e5da; }
-QToolButton:focus, QPushButton:focus { border: 1px solid #126b5e; }
-QPushButton { background: #ffffff; border: 1px solid #8196a5; border-radius: 0; padding: 8px 12px; }
-QPushButton:hover { background: #eaf1f4; border-color: #55788a; }
-QPushButton:pressed { background: #d9e5e9; }
-QPushButton#primary { background: #187b6c; color: #ffffff; border: 1px solid #187b6c; font-weight: 600; }
-QPushButton#primary:hover { background: #12695c; }
-QPushButton#primary:focus { border: 2px solid #0b3d35; padding: 7px 11px; }
-QPushButton:disabled, QToolButton:disabled { color: #929faa; background: #edf1f4; border-color: #d4dde4; }
-QLineEdit, QComboBox, QDoubleSpinBox, QSpinBox { background: #ffffff; border: 1px solid #8196a5; border-radius: 0; padding: 6px; selection-background-color: #cce7df; selection-color: #174c44; }
-QLineEdit:focus, QComboBox:focus, QDoubleSpinBox:focus, QSpinBox:focus { border: 1px solid #126b5e; outline: 1px solid #126b5e; }
-QLineEdit:disabled, QComboBox:disabled, QDoubleSpinBox:disabled, QSpinBox:disabled { background: #edf1f4; color: #8b9aa5; border-color: #d4dde4; }
-QLineEdit QToolButton { padding: 1px; border: none; background: transparent; }
-QComboBox QAbstractItemView { background: #ffffff; color: #273847; selection-background-color: #deefea; selection-color: #125f54; }
-QComboBox { padding-right: 30px; }
-QComboBox::drop-down { subcontrol-origin: border; subcontrol-position: top right; border-left: 1px solid #8196a5; width: 25px; background: #edf2f5; }
-QComboBox::drop-down:hover { background: #deebe6; }
-QComboBox::down-arrow { image: url(__RESOURCES__/chevron-down.svg); width: 10px; height: 6px; }
-QComboBox::down-arrow:disabled { image: url(__RESOURCES__/chevron-down-disabled.svg); }
-QDoubleSpinBox, QSpinBox { padding-right: 25px; }
-QDoubleSpinBox::up-button, QSpinBox::up-button { subcontrol-origin: border; subcontrol-position: top right; width: 21px; border-left: 1px solid #8196a5; border-bottom: 1px solid #b2c0ca; background: #edf2f5; }
-QDoubleSpinBox::down-button, QSpinBox::down-button { subcontrol-origin: border; subcontrol-position: bottom right; width: 21px; border-left: 1px solid #8196a5; background: #edf2f5; }
-QDoubleSpinBox::up-button:hover, QSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover, QSpinBox::down-button:hover { background: #deebe6; }
-QDoubleSpinBox::up-arrow, QSpinBox::up-arrow { image: url(__RESOURCES__/chevron-up.svg); width: 9px; height: 5px; }
-QDoubleSpinBox::down-arrow, QSpinBox::down-arrow { image: url(__RESOURCES__/chevron-down.svg); width: 9px; height: 5px; }
-QDoubleSpinBox::up-arrow:disabled, QSpinBox::up-arrow:disabled { image: url(__RESOURCES__/chevron-up-disabled.svg); }
-QDoubleSpinBox::down-arrow:disabled, QSpinBox::down-arrow:disabled { image: url(__RESOURCES__/chevron-down-disabled.svg); }
-QToolButton#qt_toolbar_ext_button { qproperty-icon: url(__RESOURCES__/more.svg); min-width: 21px; padding: 5px; border: 1px solid #8196a5; background: #edf2f5; }
-QLabel#brand { font-size: 28px; font-weight: 600; letter-spacing: 1px; color: #203b44; }
-QLabel#eyebrow { color: #3e7368; font-size: 10px; font-weight: 600; letter-spacing: 2px; }
-QLabel#muted { color: #596b79; }
-QLabel#section { color: #5a7181; font-size: 10px; font-weight: 600; letter-spacing: 1px; padding-top: 14px; padding-bottom: 4px; }
-QLabel#volumeTitle { background: #0b131c; color: #adbfd3; font-size: 10px; font-weight: 600; }
-QLabel#welcomeTitle { color: #203b44; font-size: 32px; font-weight: 500; }
-QListWidget { border: none; background: #f5f7f9; outline: none; }
-QListWidget::item { background: #ffffff; border: 1px solid #d4dde4; padding: 13px 10px; margin: 4px 0; border-radius: 0; }
-QListWidget::item:selected { background: #e2f0eb; border: 1px solid #74ab9b; color: #185c50; }
-QListWidget::item:hover { border-color: #8ca6b5; }
-QTreeWidget { background: #ffffff; border: 1px solid #d4dde4; outline: none; padding: 3px; }
-QTreeWidget::item { padding: 4px 3px; border: 1px solid transparent; }
-QTreeWidget::item:selected { background: #d9eee6; color: #145d54; border-left: 2px solid #237a67; }
-QTreeWidget::item:hover { background: #edf4f1; }
-QTreeWidget:focus, QTableView:focus { border: 1px solid #126b5e; }
-QDockWidget::title { padding: 7px 12px; background: #e8eef2; color: #405d70; border-bottom: 1px solid #d4dde4; }
-QGroupBox { border: 1px solid #d4dde4; border-radius: 0; margin-top: 12px; padding: 12px; }
-QGroupBox::title { subcontrol-origin: margin; left: 10px; color: #5a7181; }
-QStatusBar { background: #edf2f5; color: #596b79; border-top: 1px solid #d4dde4; }
-QSplitter::handle { background: #d4dde4; width: 4px; height: 4px; }
-QSplitter::handle:hover { background: #82b2a2; }
-QSlider::groove:horizontal { height: 4px; background: #ccd7de; border-radius: 0; }
-QSlider::sub-page:horizontal { background: #438f7f; border-radius: 0; }
-QSlider::handle:horizontal { background: #1e7565; width: 12px; margin: -5px 0; border-radius: 0; }
-QSlider::handle:horizontal:focus { border: 1px solid #093b31; background: #126451; }
-QSlider::handle:horizontal:disabled { background: #a8b7c1; }
-QCheckBox { spacing: 7px; }
-QCheckBox::indicator { width: 14px; height: 14px; border: 1px solid #8196a5; background: #ffffff; }
-QCheckBox::indicator:checked { border-color: #187b6c; background: #187b6c; image: url(__RESOURCES__/check.svg); }
-QCheckBox::indicator:focus { border: 1px solid #073f34; }
-QCheckBox:disabled { color: #929faa; }
-QCheckBox::indicator:disabled { border-color: #c7d2da; background: #e7edf1; }
-QScrollArea { border: none; }
-QScrollBar:vertical { background: #e8eef2; width: 12px; margin: 0; }
-QScrollBar::handle:vertical { background: #92a6b4; min-height: 28px; margin: 2px; }
-QScrollBar::handle:vertical:hover { background: #5b8290; }
-QScrollBar:horizontal { background: #e8eef2; height: 12px; margin: 0; }
-QScrollBar::handle:horizontal { background: #92a6b4; min-width: 28px; margin: 2px; }
-QScrollBar::handle:horizontal:hover { background: #5b8290; }
-QScrollBar::add-line, QScrollBar::sub-line { width: 0; height: 0; }
-QScrollBar::add-page, QScrollBar::sub-page { background: transparent; }
-QTableView { background: #ffffff; gridline-color: #d4dde4; border: 1px solid #d4dde4; alternate-background-color: #f0f4f7; selection-background-color: #d9eee6; selection-color: #145d54; }
-QHeaderView::section { background: #e8eef2; color: #405d70; padding: 7px; border: none; }
-QToolTip { background: #ffffff; color: #273847; border: 1px solid #aebfc9; padding: 6px; }
-""".replace("__RESOURCES__", (Path(__file__).resolve().parent / "resources").as_posix())
+RESOURCE_DIRECTORY = Path(__file__).with_name("resources")
+THEME_DIRECTORY = RESOURCE_DIRECTORY / "themes"
+THEME_CHOICES = (("cockpit", "Modern dark"), ("modern-light", "Modern light"),
+                 ("light", "Classic light"), ("dark", "Classic dark"))
+THEME_NAMES = tuple(name for name, _ in THEME_CHOICES)
+MODERN_THEMES = frozenset(("cockpit", "modern-light"))
+_TOKEN = re.compile(r"%\(([A-Za-z_][A-Za-z0-9_]*)\)s")
+_COLOR = re.compile(r"#[0-9A-Fa-f]{6}\Z")
+_BASE_COLORS = frozenset((
+    "window", "panel", "base", "toolbar", "text", "muted", "border", "divider",
+    "hover", "selected", "selected_text", "accent", "control", "alternate", "disabled",
+    "shine", "shadow", "deep", "focus", "tab_inactive", "tab_text", "tab_hover",
+))
+_EXTRA_COLORS = frozenset((
+    "caption_active", "caption_inactive", "caption_text", "caption_border", "caption_button",
+    "caption_hover", "caption_pressed", "caption_close_hover", "caption_shine", "caption_deep",
+    "glyph_foreground", "glyph_disabled", "plot_background", "plot_foreground", "plot_accent",
+    "plot_secondary", "plot_axis", "plot_center", "block_container", "block_measurement",
+    "block_header", "block_channel", "block_noise", "block_sync", "block_selected", "block_text",
+    "block_canvas", "block_border",
+    "plot_magnitude_0", "plot_magnitude_1", "plot_magnitude_2", "plot_magnitude_3", "plot_magnitude_4", "plot_magnitude_5",
+    "plot_phase_0", "plot_phase_1", "plot_phase_2", "plot_phase_3", "plot_phase_4",
+))
+
+
+class ThemeAssetError(ValueError):
+    """An editable theme file cannot be loaded or validated."""
+
+
+@dataclass(frozen=True)
+class ThemeAssets:
+    name: str
+    title: str
+    colors: dict[str, str]
+    font_family: str
+    font_size: int
+    stylesheet: str
+    caption_stylesheet: str
+
+
+def _read_text(path):
+    try:
+        return path.read_text(encoding="utf-8-sig")
+    except (OSError, UnicodeError) as error:
+        raise ThemeAssetError(f"Unable to read theme asset {path}: {error}") from error
+
+
+def _asset_path(directory, filename, field):
+    if not isinstance(filename, str) or not filename or Path(filename).is_absolute():
+        raise ThemeAssetError(f"{field} must name a .qss file inside {directory}")
+    path = (directory / filename).resolve()
+    if path.suffix.casefold() != ".qss" or not path.is_relative_to(directory.resolve()):
+        raise ThemeAssetError(f"{field} must name a .qss file inside {directory}")
+    return path
+
+
+def _render_stylesheet(path, tokens):
+    template = _read_text(path)
+    unknown = sorted(set(_TOKEN.findall(template)) - tokens.keys())
+    if unknown:
+        raise ThemeAssetError(f"Unknown palette token in {path}: {', '.join(unknown)}")
+    rendered = _TOKEN.sub(lambda match: tokens[match.group(1)], template)
+    if "%(" in rendered:
+        raise ThemeAssetError(f"Malformed palette token in {path}; use %(color_name)s")
+    # Catch common accidental edits before Qt can discard the old style.
+    rules = re.sub(r"/\*.*?\*/", "", rendered, flags=re.DOTALL)
+    rules = re.sub(r'''"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*' ''', "", rules, flags=re.VERBOSE)
+    depth = 0
+    for character in rules:
+        if character == "{":
+            depth += 1
+            if depth > 1:
+                raise ThemeAssetError(f"Nested or unbalanced stylesheet braces in {path}")
+        elif character == "}":
+            depth -= 1
+            if depth < 0:
+                raise ThemeAssetError(f"Unbalanced stylesheet braces in {path}")
+    if depth or "{" not in rules:
+        raise ThemeAssetError(f"Missing or unbalanced stylesheet braces in {path}")
+    return rendered
+
+
+def load_theme(name="cockpit", theme_directory=None):
+    """Read and validate fresh assets without changing the running application."""
+    if name not in THEME_NAMES:
+        raise ThemeAssetError(f"Unknown theme {name!r}; choose {', '.join(THEME_NAMES)}")
+    directory = Path(theme_directory) if theme_directory is not None else THEME_DIRECTORY
+    path = directory / f"{name}.json"
+    try:
+        document = json.loads(_read_text(path))
+    except json.JSONDecodeError as error:
+        raise ThemeAssetError(f"Invalid JSON in {path}, line {error.lineno}: {error.msg}") from error
+    if not isinstance(document, dict) or type(document.get("schema_version")) is not int or document["schema_version"] != 1:
+        raise ThemeAssetError(f"{path} must be a theme object with schema_version 1")
+    colors = document.get("colors")
+    if not isinstance(colors, dict):
+        raise ThemeAssetError(f"{path} needs a colors object")
+    missing = sorted((_BASE_COLORS | _EXTRA_COLORS) - colors.keys())
+    if missing:
+        raise ThemeAssetError(f"Missing colors in {path}: {', '.join(missing)}")
+    for key, value in colors.items():
+        if not isinstance(key, str) or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", key):
+            raise ThemeAssetError(f"Invalid color token name in {path}: {key!r}")
+        if not isinstance(value, str) or not _COLOR.fullmatch(value) or not QColor(value).isValid():
+            raise ThemeAssetError(f"Invalid color {key!r} in {path}: use #RRGGBB")
+    font = document.get("font")
+    if not isinstance(font, dict) or not isinstance(font.get("family"), str) or not font["family"].strip():
+        raise ThemeAssetError(f"{path} needs a font family")
+    font_size = font.get("point_size")
+    if type(font_size) is not int or not 6 <= font_size <= 32:
+        raise ThemeAssetError(f"font.point_size in {path} must be an integer from 6 to 32")
+    arrow_variant = document.get("arrow_variant")
+    if arrow_variant not in ("light", "dark"):
+        raise ThemeAssetError(f"arrow_variant in {path} must be light or dark")
+    title = document.get("title")
+    if not isinstance(title, str) or not title.strip():
+        raise ThemeAssetError(f"{path} needs a title")
+    tokens = dict(colors)
+    for direction in ("up", "down", "left", "right"):
+        tokens[f"arrow_{direction}"] = (RESOURCE_DIRECTORY / f"arrow-{direction}-{arrow_variant}.svg").as_posix()
+        tokens[f"arrow_{direction}_disabled"] = (RESOURCE_DIRECTORY / f"arrow-{direction}-disabled.svg").as_posix()
+    checkmark = "checkmark-light.svg" if QColor(colors["accent"]).lightness() < 128 else "checkmark.svg"
+    tokens["checkmark"] = (RESOURCE_DIRECTORY / checkmark).as_posix()
+    stylesheet = _render_stylesheet(_asset_path(directory, document.get("stylesheet"), "stylesheet"), tokens)
+    caption = _render_stylesheet(_asset_path(directory, document.get("caption_stylesheet"), "caption_stylesheet"), tokens)
+    return ThemeAssets(name, title, dict(colors), font["family"], font_size, stylesheet, caption)
+
+
+def theme_colors(name="cockpit", theme_directory=None):
+    """Return a fresh copy of a theme's editable palette."""
+    return load_theme(name, theme_directory).colors
+
+
+def theme_stylesheet(name="cockpit", theme_directory=None):
+    return load_theme(name, theme_directory).stylesheet
+
+
+def apply_theme(app, name="cockpit", theme_directory=None):
+    """Validate all referenced files before applying any palette or style change."""
+    return apply_theme_assets(app, load_theme(name, theme_directory))
+
+
+def apply_theme_assets(app, assets):
+    """Apply one already-loaded snapshot after callers preflight other assets."""
+    if not isinstance(assets, ThemeAssets):
+        raise TypeError("assets must be a loaded ThemeAssets snapshot")
+    colors = assets.colors
+    from .icons import set_icon_theme
+    set_icon_theme(assets.name, colors)
+    palette = QPalette()
+    for role, key in {
+        QPalette.ColorRole.Window: "window", QPalette.ColorRole.WindowText: "text",
+        QPalette.ColorRole.Base: "base", QPalette.ColorRole.AlternateBase: "alternate",
+        QPalette.ColorRole.Text: "text", QPalette.ColorRole.Button: "control",
+        QPalette.ColorRole.ButtonText: "text", QPalette.ColorRole.Highlight: "selected",
+        QPalette.ColorRole.Accent: "accent",
+        QPalette.ColorRole.HighlightedText: "selected_text", QPalette.ColorRole.ToolTipBase: "base",
+        QPalette.ColorRole.ToolTipText: "text", QPalette.ColorRole.PlaceholderText: "muted",
+        QPalette.ColorRole.Light: "shine", QPalette.ColorRole.Mid: "border",
+        QPalette.ColorRole.Midlight: "toolbar", QPalette.ColorRole.Dark: "shadow",
+        QPalette.ColorRole.Shadow: "deep",
+    }.items():
+        palette.setColor(role, QColor(colors[key]))
+    for role in (QPalette.ColorRole.Text, QPalette.ColorRole.ButtonText, QPalette.ColorRole.WindowText):
+        palette.setColor(QPalette.ColorGroup.Disabled, role, QColor(colors["disabled"]))
+    font = QFont(assets.font_family, assets.font_size)
+    app.setProperty("lumenTheme", assets.name)
+    app.setProperty("lumenThemeColors", dict(colors))
+    app.setPalette(palette)
+    app.setFont(font)
+    app.setStyleSheet(assets.stylesheet)
+    if hasattr(app.styleHints(), "setColorScheme"):
+        scheme = Qt.ColorScheme.Light if QColor(colors["window"]).lightness() >= 128 else Qt.ColorScheme.Dark
+        app.styleHints().setColorScheme(scheme)
+    return assets
+
+
+# Compatibility snapshots for callers that only need the bundled initial colors.
+# Reloadable UI code should use theme_colors/load_theme rather than these dicts.
+LIGHT = theme_colors("light")
+DARK = theme_colors("dark")
+COCKPIT = theme_colors("cockpit")
+STYLE = theme_stylesheet("modern-light")
+stylesheet = theme_stylesheet
+
+
+def is_dark_theme(name):
+    return QColor(theme_colors(name)["window"]).lightness() < 128

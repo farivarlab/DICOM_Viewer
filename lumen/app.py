@@ -9,26 +9,34 @@ import time
 
 import numpy as np
 from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QTimer, QSize, QUrl
-from PySide6.QtGui import QAction, QActionGroup, QFont, QKeySequence, QIcon, QDesktopServices
+from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QToolBar, QComboBox, QDoubleSpinBox, QSpinBox,
     QSlider, QLineEdit, QSplitter, QStackedWidget, QDockWidget, QToolButton,
     QFileDialog, QMessageBox, QCheckBox, QFormLayout, QScrollArea, QDialog,
+    QAbstractButton, QTreeWidgetItemIterator, QMenu, QSizePolicy, QDialogButtonBox, QMenuBar,
 )
 
 from . import __version__
 from .colors import STOPS
 from .importer import import_paths
-from .icons import icon, ACTION_ICONS
+from .icons import icon, ACTION_ICONS, retheme_icon, clear_icon_cache
 from .model import ImageVolume, load_series, demo_volume
 from .slice_view import SliceView
-from .theme import STYLE
+from .theme import (apply_theme, apply_theme_assets, load_theme, THEME_CHOICES,
+                    THEME_NAMES, MODERN_THEMES, THEME_DIRECTORY, is_dark_theme)
 from .volume_view import VolumeView
 from .browser import CaseBrowser, Target
 from .metadata import MetadataPane
 from .export_dialog import ExportDialog
+from .nifti import load_input_series, export_nifti
 from .model import functional
+from .preferences import open_settings, saved_theme
+from .branding import application_icon, logo_file, refresh_application_icons
+from .chrome import ClassicDockWidget as QDockWidget, ClassicTitleBar, install_native_frame, native_frame_event
+from .dialogs import QFileDialog, QMessageBox, install_dialog_style
+from .caption_icons import clear_glyph_cache
 
 PRESETS = {"Soft tissue": (400, 40), "Lung": (1500, -600), "Bone": (2000, 400),
            "Brain": (80, 40), "Abdomen": (350, 50), "Angiography": (700, 200)}
@@ -46,12 +54,13 @@ class JobCancelled(Exception):
 
 
 class Job(QRunnable):
-    def __init__(self, function):
+    def __init__(self, function, discard_on_cancel=True):
         super().__init__()
         self.function = function
         self.signals = JobSignals()
         self.cancel_event = threading.Event()
         self.last_progress = 0.
+        self.discard_on_cancel = discard_on_cancel
 
     def progress(self, message):
         if self.cancel_event.is_set():
@@ -71,7 +80,7 @@ class Job(QRunnable):
     def run(self):
         try:
             result = self.function(self.progress)
-            if self.cancel_event.is_set():
+            if self.cancel_event.is_set() and self.discard_on_cancel:
                 self.discard(result)
                 raise JobCancelled()
             self.signals.finished.emit(result)
@@ -92,11 +101,22 @@ def label(text, name=None, wrap=False):
 
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, settings_path=None):
         super().__init__()
+        self.settings = open_settings(settings_path)
+        self.theme_name = saved_theme(self.settings)
+        apply_theme(QApplication.instance(), self.theme_name)
+        identity = application_icon()
+        QApplication.instance().setWindowIcon(identity)
+        self.setWindowIcon(identity)
+        install_dialog_style()
+        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        self.setObjectName("dicomViewer")
+        self.setContentsMargins(3, 3, 3, 3)
         self.setWindowTitle("Lumen · DICOM Viewer")
         self.resize(1520, 960)
         self.setMinimumSize(1120, 740)
+        self._create_window_chrome()
         self.setAcceptDrops(True)
         self.data: ImageVolume | None = None
         self.series = []
@@ -118,8 +138,8 @@ class MainWindow(QMainWindow):
         self._create_workspace()
         self._create_metadata()
         self._create_menu()
-        self.statusBar().showMessage("Ready · Open a DICOM folder, files, DICOMDIR, or ZIP")
-        self.status_hint = label("LOCAL FILES  ·  RESEARCH VIEWER", "eyebrow")
+        self.statusBar().showMessage("Ready · Open DICOM or NIfTI images, a folder, DICOMDIR, or ZIP")
+        self.status_hint = label("Not for diagnostic use", "muted")
         self.statusBar().addPermanentWidget(self.status_hint)
         self.cancel_button = QPushButton("Cancel")
         self.cancel_button.setIcon(icon("close"))
@@ -127,6 +147,30 @@ class MainWindow(QMainWindow):
         self.cancel_button.hide()
         self.statusBar().addPermanentWidget(self.cancel_button)
         self._set_data_enabled(False)
+        self.update_colorbars(persist=False)
+
+    def _create_window_chrome(self):
+        header = QWidget(self)
+        layout = QVBoxLayout(header)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self.title_bar = ClassicTitleBar(self)
+        self._application_menu_bar = QMenuBar(header)
+        self._application_menu_bar.setNativeMenuBar(False)
+        layout.addWidget(self.title_bar)
+        layout.addWidget(self._application_menu_bar)
+        self.setMenuWidget(header)
+
+    def menuBar(self):
+        return getattr(self, "_application_menu_bar", None) or super().menuBar()
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        install_native_frame(self)
+
+    def nativeEvent(self, event_type, message):
+        result = native_frame_event(self, message)
+        return result if result is not None else super().nativeEvent(event_type, message)
 
     def action(self, text, callback, shortcut=None, checkable=False):
         action = QAction(text, self)
@@ -135,7 +179,8 @@ class MainWindow(QMainWindow):
         if shortcut:
             action.setShortcut(QKeySequence(shortcut))
         action.setToolTip(f"{text} ({shortcut})" if shortcut else text)
-        action.triggered.connect(callback)
+        if callback is not None:
+            action.triggered.connect(callback)
         return action
 
     def _create_actions(self):
@@ -146,6 +191,8 @@ class MainWindow(QMainWindow):
         self.export_action.setText("Export PNG…")
         self.export_action.setToolTip("Export annotated or unannotated PNG (Ctrl+S)")
         self.copy_action = self.action("Copy image", self.copy_image, "Ctrl+C")
+        self.export_nifti_action = self.action("Export NIfTI…", self.export_nifti_series, "Ctrl+Shift+S")
+        self.export_nifti_action.setToolTip("Export the selected volume or DICOM series as NIfTI (dcm2niix)")
         self.tags_action = self.action("DICOM tags", self.show_tags, "Ctrl+I", True)
         self.fit_action = self.action("Fit", self.fit_active, "F")
         self.reset_action = self.action("Reset", self.reset_views, "R")
@@ -155,7 +202,12 @@ class MainWindow(QMainWindow):
         self.clear_action = self.action("Clear marks", self.clear_marks)
         self.cine_action = self.action("Play cine", self.toggle_cine, "Space", True)
         self.invert_action = self.action("Invert", self.invert, "I", True)
+        self.colorbar_action = self.action("Colorbar", None, checkable=True)
+        self.colorbar_action.setChecked(self.settings.value("display/colorbar", True, type=bool))
+        self.colorbar_action.toggled.connect(self.update_colorbars)
         self.fullscreen_action = self.action("Full screen", self.fullscreen, "F11")
+        self.theme_toggle = self.action("Dark theme", self.toggle_theme, checkable=True)
+        self.theme_toggle.setChecked(is_dark_theme(self.theme_name))
         self.tool_group = QActionGroup(self)
         self.tools = {}
         for name, shortcut in (("Window", "W"), ("Pan", "P"), ("Zoom", "Z"), ("Scroll", "S"),
@@ -165,30 +217,40 @@ class MainWindow(QMainWindow):
             self.tool_group.addAction(action)
             self.tools[name] = action
         self.tools["Window"].setChecked(True)
-        self.data_actions = [self.export_action, self.copy_action, self.tags_action, self.fit_action,
+        self.data_actions = [self.export_action, self.export_nifti_action, self.copy_action, self.tags_action, self.fit_action,
             self.reset_action, self.rotate_action, self.flip_h_action, self.flip_v_action,
-            self.clear_action, self.cine_action, self.invert_action, *self.tools.values()]
+            self.clear_action, self.cine_action, self.invert_action, self.colorbar_action, *self.tools.values()]
 
     def _create_menu(self):
         file_menu = self.menuBar().addMenu("File")
-        for action in (self.open_action, self.folder_action, self.demo_action, self.export_action, self.copy_action):
+        for action in (self.open_action, self.folder_action, self.demo_action, self.export_action, self.export_nifti_action, self.copy_action):
             file_menu.addAction(action)
         file_menu.addSeparator()
         file_menu.addAction(self.action("Exit", self.close, "Alt+F4"))
         view_menu = self.menuBar().addMenu("View")
         for action in (self.fit_action, self.reset_action, self.invert_action, self.rotate_action,
-                       self.flip_h_action, self.flip_v_action, self.tags_action, self.fullscreen_action):
+                       self.flip_h_action, self.flip_v_action, self.tags_action, self.colorbar_action, self.fullscreen_action):
             view_menu.addAction(action)
+        theme_menu = view_menu.addMenu("Appearance")
+        self.theme_group = QActionGroup(self)
+        self.theme_actions = {}
+        for mode, title in THEME_CHOICES:
+            action = self.action(title, lambda checked, name=mode: self.set_theme(name), checkable=True)
+            self.theme_group.addAction(action)
+            action.setChecked(self.theme_name == mode)
+            theme_menu.addAction(action)
+            self.theme_actions[mode] = action
+        theme_menu.addSeparator()
+        theme_menu.addAction(self.action("Reload appearance assets", self.reload_appearance_assets, "Ctrl+Shift+R"))
+        theme_menu.addAction(self.action("Open logo folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(logo_file().parent)))))
+        theme_menu.addAction(self.action("Open theme folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(THEME_DIRECTORY)))))
         tools = self.menuBar().addMenu("Tools")
         tools.addActions(list(self.tools.values()))
         tools.addAction(self.clear_action)
         help_menu = self.menuBar().addMenu("Help")
         help_menu.addAction(self.action("Controls", self.show_help, "F1"))
         help_menu.addAction(self.action("Third-party notices", self.show_notices))
-        help_menu.addAction(self.action("About Lumen", lambda: QMessageBox.about(self, "Lumen",
-            f"Lumen {__version__}\nOffline DICOM viewer · Python / Qt / VTK\n\n"
-            "Research and education software. Not validated for diagnostic use.\n"
-            "Input DICOM files are opened read only.\nNo networking, accounts, or uploads.")))
+        help_menu.addAction(self.action("About Lumen", self.show_about))
 
     def _create_toolbar(self):
         main = QToolBar("Workspace", self)
@@ -198,6 +260,7 @@ class MainWindow(QMainWindow):
         self.addToolBar(main)
         main.addAction(self.open_action)
         main.addAction(self.folder_action)
+        main.widgetForAction(self.folder_action).setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         main.addSeparator()
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["2D stack", "MPR", "MPR + 3D", "3D volume"])
@@ -214,16 +277,24 @@ class MainWindow(QMainWindow):
             main.widgetForAction(action).setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         spacer = QWidget()
         spacer.setStyleSheet("background: transparent;")
-        from PySide6.QtWidgets import QSizePolicy
         spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         main.addWidget(spacer)
+        main.addAction(self.theme_toggle)
+        main.widgetForAction(self.theme_toggle).setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonIconOnly)
         main.addAction(self.tags_action)
         main.addAction(self.export_action)
+        export_button = main.widgetForAction(self.export_action)
+        export_menu = QMenu(export_button)
+        export_menu.addAction(self.export_action)
+        export_menu.addAction(self.export_nifti_action)
+        export_button.setMenu(export_menu)
+        export_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         self.addToolBarBreak()
         self.tool_bar = QToolBar("Image tools", self)
+        self.tool_bar.setObjectName("imageTools")
         self.tool_bar.setMovable(False)
-        self.tool_bar.setIconSize(QSize(22, 22))
-        self.tool_bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextUnderIcon)
+        self.tool_bar.setIconSize(QSize(18, 18))
+        self.tool_bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextBesideIcon)
         self.addToolBar(self.tool_bar)
         for name, action in self.tools.items():
             if name in ("Crosshair", "Arrow"):
@@ -237,19 +308,16 @@ class MainWindow(QMainWindow):
         splitter.setChildrenCollapsible(False)
         self.setCentralWidget(splitter)
         sidebar = QWidget()
-        sidebar.setMinimumWidth(265)
+        sidebar.setMinimumWidth(235)
         sidebar.setMaximumWidth(480)
         side = QVBoxLayout(sidebar)
-        side.setContentsMargins(12, 12, 12, 12)
-        side.addWidget(label("lumen", "brand"))
-        side.addWidget(label("DICOM WORKSPACE", "eyebrow"))
-        side.addSpacing(6)
-        self.open_button = QPushButton("Open a study")
-        self.open_button.setIcon(icon("folder", color="#ffffff"))
-        self.open_button.setObjectName("primary")
+        side.setContentsMargins(8, 6, 8, 8)
+        side.setSpacing(6)
+        side.addWidget(label("Study browser", "panelHeader"))
+        self.open_button = QPushButton("Open folder…")
+        self.open_button.setIcon(icon("folder"))
         self.open_button.clicked.connect(self.open_folder)
         side.addWidget(self.open_button)
-        side.addWidget(label("PATIENTS / CASES / FILES", "section"))
         self.search = QLineEdit()
         self.search.setPlaceholderText("Search patients, cases, files…")
         self.search.setClearButtonEnabled(True)
@@ -265,35 +333,34 @@ class MainWindow(QMainWindow):
         center = QWidget()
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(0, 0, 0, 0)
-        self.study_title = label("Image workspace")
-        self.study_title.setContentsMargins(18, 13, 18, 13)
+        self.study_title = label("No image open", "studyHeader")
+        self.study_title.setContentsMargins(10, 5, 10, 5)
         center_layout.addWidget(self.study_title)
         self.pages = QStackedWidget()
         center_layout.addWidget(self.pages, 1)
         welcome = QWidget()
-        welcome.setStyleSheet("background: #f5f7f9;")
+        welcome.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         wl = QVBoxLayout(welcome)
-        wl.setContentsMargins(70, 60, 70, 60)
+        wl.setContentsMargins(36, 28, 36, 28)
+        wl.setSpacing(10)
         wl.addStretch()
-        wl.addWidget(label("A CLOSER LOOK", "eyebrow"))
-        wl.addSpacing(15)
-        wl.addWidget(label("Your images.\nA clear perspective.", "welcomeTitle"))
-        wl.addSpacing(15)
-        wl.addWidget(label("Open a DICOM study to explore slices, linked multiplanar\nreconstructions, and interactive 3D volumes.", "muted", True))
-        wl.addSpacing(25)
-        start = QPushButton("Open DICOM folder")
-        start.setIcon(icon("folder", color="#ffffff"))
-        start.setObjectName("primary")
-        start.setMaximumWidth(210)
-        start.clicked.connect(self.open_folder)
-        wl.addWidget(start)
-        sample = QPushButton("Try the generated phantom")
+        wl.addWidget(label("Open images", "welcomeTitle"))
+        wl.addWidget(label("Select DICOM or NIfTI files, or drop files, a folder or a ZIP archive here.", "muted", True))
+        buttons = QHBoxLayout()
+        start = QPushButton("Open files…")
+        start.setIcon(icon("open"))
+        start.clicked.connect(self.open_files)
+        buttons.addWidget(start)
+        folder = QPushButton("Open folder…")
+        folder.setIcon(icon("folder"))
+        folder.clicked.connect(self.open_folder)
+        buttons.addWidget(folder)
+        sample = QPushButton("Load demo")
         sample.setIcon(icon("demo"))
-        sample.setMaximumWidth(210)
         sample.clicked.connect(self.load_demo)
-        wl.addWidget(sample)
-        wl.addSpacing(28)
-        wl.addWidget(label("OR DROP FILES, A FOLDER, OR A ZIP HERE", "eyebrow"))
+        buttons.addWidget(sample)
+        buttons.addStretch()
+        wl.addLayout(buttons)
         wl.addStretch()
         self.pages.addWidget(welcome)
         self.canvas = QWidget()
@@ -361,13 +428,13 @@ class MainWindow(QMainWindow):
         inspector = QWidget()
         inspector_scroll.setWidget(inspector)
         settings = QVBoxLayout(inspector)
-        settings.setContentsMargins(18, 12, 18, 18)
+        settings.setContentsMargins(10, 6, 10, 10)
         self.display_controls = QWidget()
         display_settings = QVBoxLayout(self.display_controls)
         display_settings.setContentsMargins(0, 0, 0, 0)
-        display_settings.addWidget(label("DISPLAY", "section"))
+        display_settings.addWidget(label("Display", "section"))
         form = QFormLayout()
-        form.setSpacing(9)
+        form.setSpacing(6)
         self.preset = QComboBox()
         self.preset.addItems(["DICOM default", "Auto contrast", *PRESETS, "Custom"])
         self.preset.currentTextChanged.connect(self.apply_preset)
@@ -380,6 +447,8 @@ class MainWindow(QMainWindow):
         self.level_spin.setRange(-1e9, 1e9)
         self.level_spin.setDecimals(1)
         self.level_spin.setValue(40)
+        for widget in (self.width_spin, self.level_spin):
+            widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
         self.width_spin.valueChanged.connect(lambda v: self.change_window(v, self.level_spin.value()))
         self.level_spin.valueChanged.connect(lambda v: self.change_window(self.width_spin.value(), v))
         form.addRow("Width", self.width_spin)
@@ -389,6 +458,8 @@ class MainWindow(QMainWindow):
         self.cmap.currentTextChanged.connect(lambda _: self.refresh_views())
         form.addRow("Colormap", self.cmap)
         display_settings.addLayout(form)
+        self.colorbar_checkbox = QCheckBox("Colorbar")
+        display_settings.addWidget(self.colorbar_checkbox)
         self.overlays = QCheckBox("DICOM information")
         self.overlays.setChecked(True)
         self.overlays.toggled.connect(self.update_overlays)
@@ -405,7 +476,7 @@ class MainWindow(QMainWindow):
         self.crosshairs.setChecked(True)
         self.crosshairs.toggled.connect(self.update_overlays)
         mpr_settings.addWidget(self.crosshairs)
-        mpr_settings.addWidget(label("MPR RECONSTRUCTION", "section"))
+        mpr_settings.addWidget(label("Reconstruction", "section"))
         mpr_form = QFormLayout()
         self.slab_mode = QComboBox()
         self.slab_mode.addItems(["Slice", "MIP", "MinIP", "Average"])
@@ -425,7 +496,7 @@ class MainWindow(QMainWindow):
         self.volume_controls = QWidget()
         volume_settings = QVBoxLayout(self.volume_controls)
         volume_settings.setContentsMargins(0, 0, 0, 0)
-        volume_settings.addWidget(label("3D VOLUME", "section"))
+        volume_settings.addWidget(label("3D rendering", "section"))
         volume_form = QFormLayout()
         self.volume_preset = QComboBox()
         self.volume_preset.addItems(["CT tissue", "CT bone", "CT lung", "Scalar"])
@@ -445,6 +516,12 @@ class MainWindow(QMainWindow):
         self.crop.valueChanged.connect(lambda value: self.volume_view.set_crop(value / 100))
         volume_form.addRow("Cutaway", self.crop)
         volume_settings.addLayout(volume_form)
+        self.volume_colorbar_checkbox = QCheckBox("Colorbar")
+        volume_settings.addWidget(self.volume_colorbar_checkbox)
+        for control in (self.colorbar_checkbox, self.volume_colorbar_checkbox):
+            control.setChecked(self.colorbar_action.isChecked())
+            control.toggled.connect(self.colorbar_action.setChecked)
+            self.colorbar_action.toggled.connect(control.setChecked)
         reset_3d = QPushButton("Reset 3D camera")
         reset_3d.setIcon(icon("camera"))
         reset_3d.clicked.connect(self.volume_view.reset_camera)
@@ -459,11 +536,10 @@ class MainWindow(QMainWindow):
         help_button.clicked.connect(self.show_help)
         settings.addWidget(help_button)
         settings.addStretch()
-        settings.addWidget(label("Research & education\nNot validated for diagnosis", "muted", True))
         self.inspector = inspector
         splitter.addWidget(inspector_scroll)
         splitter.setStretchFactor(1, 1)
-        splitter.setSizes([310, 950, 260])
+        splitter.setSizes([260, 1020, 240])
 
     def _create_metadata(self):
         self.metadata_pane = MetadataPane()
@@ -486,7 +562,10 @@ class MainWindow(QMainWindow):
             caption = ref.path.name if ref.path else f"Image {self.source_index + 1}"
             if self.mode != "2D stack":
                 caption = f"Source header · {caption}"
-            self.metadata_pane.set_dataset(self.data.header(self.source_index), f"{caption} · frame {ref.frame + 1}")
+            if self.data.series.source_format == "NIfTI":
+                self.metadata_pane.set_fields(self.data.format_metadata, caption)
+            else:
+                self.metadata_pane.set_dataset(self.data.header(self.source_index), f"{caption} · frame {ref.frame + 1}")
 
     def _set_data_enabled(self, enabled):
         for action in self.data_actions:
@@ -505,9 +584,14 @@ class MainWindow(QMainWindow):
             return
         is_2d = self.mode != "3D volume"
         scalar_2d = is_2d and not self.data.is_color
+        self.colorbar_action.setEnabled(not self.data.is_color)
+        self.colorbar_checkbox.setEnabled(not self.data.is_color)
+        self.volume_colorbar_checkbox.setEnabled(not self.data.is_color)
+        self.volume_colorbar_checkbox.setVisible(self.mode == "3D volume")
         self.tool_bar.setEnabled(is_2d)
         self.cine_action.setEnabled(is_2d and self.slice_slider.maximum() > 0)
         self.clear_action.setEnabled(is_2d)
+        self.export_nifti_action.setEnabled(not self.data.is_color and bool(self.data.series.paths))
         for action in (self.rotate_action, self.flip_h_action, self.flip_v_action):
             action.setEnabled(is_2d)
         self.invert_action.setEnabled(scalar_2d)
@@ -530,11 +614,12 @@ class MainWindow(QMainWindow):
         self.overlays.setEnabled(is_2d)
         self.embedded_overlays.setEnabled(self.mode == "2D stack" and bool(self.data.overlay_layers(self.source_index)))
 
-    def start_job(self, function, callback):
+    def start_job(self, function, callback, error_title="Unable to open images", discard_on_cancel=True):
         if self.busy:
             return
         self.stop_cine()
         self.busy = True
+        self._job_error_title = error_title
         self._set_data_enabled(False)
         self.cancel_button.setText("Cancel")
         self.cancel_button.setEnabled(True)
@@ -544,7 +629,7 @@ class MainWindow(QMainWindow):
         self.demo_action.setEnabled(False)
         self.open_button.setEnabled(False)
         self.browser.setEnabled(False)
-        self.job = Job(function)
+        self.job = Job(function, discard_on_cancel=discard_on_cancel)
         self.job.signals.progress.connect(self.statusBar().showMessage)
         self.job.signals.finished.connect(lambda result: self.finish_job(callback, result))
         self.job.signals.failed.connect(self.fail_job)
@@ -598,20 +683,20 @@ class MainWindow(QMainWindow):
         if self._closing:
             return
         self.statusBar().showMessage("Operation failed · the previous image is still open")
-        QMessageBox.warning(self, "Unable to open images", message)
+        QMessageBox.warning(self, getattr(self, "_job_error_title", "Unable to open images"), message)
 
     def open_files(self):
         if self.busy:
             return
-        paths, _ = QFileDialog.getOpenFileNames(self, "Open DICOM files / DICOMDIR / ZIP", "",
-                                              "All files (*);;DICOM (*.dcm *.dicom);;ZIP archives (*.zip)")
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open DICOM / NIfTI / ZIP", "",
+            "Medical images (*.dcm *.dicom *.nii *.nii.gz *.zip DICOMDIR);;NIfTI (*.nii *.nii.gz);;All files (*)")
         if paths:
             self.open_paths(paths)
 
     def open_folder(self):
         if self.busy:
             return
-        path = QFileDialog.getExistingDirectory(self, "Open DICOM study folder")
+        path = QFileDialog.getExistingDirectory(self, "Open medical image folder")
         if path:
             self.open_paths([path])
 
@@ -623,7 +708,7 @@ class MainWindow(QMainWindow):
         scan, temporaries = result
         self.temporaries.extend(temporaries)
         if not scan.series:
-            raise ValueError("No DICOM pixel images were found in the selected files.")
+            raise ValueError("No supported DICOM or NIfTI images were found in the selected files.")
         existing = {s.uid: s for s in self.series}
         for series in scan.series:
             if series.uid in existing:
@@ -631,6 +716,8 @@ class MainWindow(QMainWindow):
                 target.paths = sorted(set(target.paths + series.paths))
                 target.files.update(series.files)
                 target.frames = sum(info.frames for info in target.files.values())
+                if target.number is None:
+                    target.number = series.number
             else:
                 self.series.append(series)
         self.populate_series()
@@ -661,7 +748,7 @@ class MainWindow(QMainWindow):
                     return
                 self.slider_changed(index)
             return
-        self.start_job(lambda progress: demo_volume() if series.uid == "demo" else load_series(series, progress, reconstruct=False),
+        self.start_job(lambda progress: demo_volume() if series.uid == "demo" else load_input_series(series, progress),
                        lambda data: self.set_data(data, target))
 
     def load_demo(self):
@@ -677,6 +764,14 @@ class MainWindow(QMainWindow):
 
     def set_data(self, data, target=None):
         self.data = data
+        is_dicom = data.series.source_format == "DICOM"
+        self.tags_action.setText("DICOM tags" if is_dicom else "NIfTI metadata")
+        self.metadata_dock.setWindowTitle("DICOM metadata" if is_dicom else "NIfTI metadata")
+        self.overlays.setText("DICOM information" if is_dicom else "Image information")
+        self.preset.blockSignals(True)
+        self.preset.setItemText(0, "DICOM default" if is_dicom else "Volume default")
+        self.preset.blockSignals(False)
+        self.slab_mm.setSuffix(f" {data.geometry_unit}")
         self._plane_cache.clear()
         self._inversion_override = None
         self._frame_lookup = {(data.reference(i).path, data.reference(i).frame): i for i in range(len(data.source))}
@@ -693,6 +788,10 @@ class MainWindow(QMainWindow):
             view._annotation_key = None
         for widget, value in ((self.width_spin, data.width), (self.level_spin, data.level)):
             widget.blockSignals(True)
+            widget.setDecimals(1 if is_dicom else 6)
+            if widget is self.width_spin:
+                widget.setMinimum(data.window_minimum)
+            widget.setSingleStep(1 if is_dicom else max(data.width / 100, 1e-6))
             widget.setValue(value)
             widget.blockSignals(False)
         self.preset.blockSignals(True)
@@ -703,7 +802,8 @@ class MainWindow(QMainWindow):
         self.volume_view.clear_volume()
         self.study_title.setText(f"{data.series.patient}   /   {data.series.description}")
         nz, ny, nx = data.source.shape[:3]
-        spacing = f"{data.spacing[0]:.2f} × {data.spacing[1]:.2f} mm" if data.calibrated else "Uncalibrated pixels"
+        spacing = (f"{data.spacing[0]:.2f} × {data.spacing[1]:.2f} {data.geometry_unit}"
+                   if data.calibrated or not is_dicom else "Uncalibrated pixels")
         self.acquisition.setText(f"{data.series.modality} · {nx} × {ny} · {spacing}")
         self.acquisition.setToolTip(data.geometry_note)
         self._set_data_enabled(True)
@@ -808,7 +908,7 @@ class MainWindow(QMainWindow):
         data = self.data
         if data is None:
             return
-        if self.mode == "2D stack" and self.preset.currentText() == "DICOM default":
+        if self.mode == "2D stack" and self.preset.currentIndex() == 0:
             for widget, value in zip((self.width_spin, self.level_spin), data.frame_window(self.source_index)):
                 widget.blockSignals(True)
                 widget.setValue(value)
@@ -846,7 +946,9 @@ class MainWindow(QMainWindow):
             view.set_image(image, spacing, key, width, level, self.cmap.currentText(), self.invert_action.isChecked(),
                 data.frame_calibrated(index) if name == "Source" else True,
                 f"{index + 1} / {total}   ·   {self.slab_mode.currentText() if name != 'Source' else 'Reconstruction'}",
-                crosshair, directions, data.frame_units(index) if name == "Source" else data.units)
+                crosshair, directions, data.frame_units(index) if name == "Source" else data.units,
+                spatial_unit=data.geometry_unit if data.series.source_format != "DICOM" else None,
+                dicom_window=data.series.source_format == "DICOM")
             # Reconstructed planes do not represent one acquired instance.
             view.set_file_annotations(data.header(self.source_index) if name == "Source" else data.dataset,
                 data.overlay_layers(self.source_index) if name == "Source" else (), reconstruction=name != "Source")
@@ -856,11 +958,11 @@ class MainWindow(QMainWindow):
                 view.subtitle = f"{index + 1} / {total} · {filename}" + (f" · frame {ref.frame + 1}" if ref.frame else "")
         if self.mode == "2D stack":
             sx, sy = data.frame_spacing(self.source_index)
-            spacing_text = f"{sx:.2f} × {sy:.2f} mm" if data.frame_calibrated(self.source_index) else "uncalibrated pixels"
+            spacing_text = f"{sx:.2f} × {sy:.2f} {data.geometry_unit}" if data.frame_calibrated(self.source_index) or data.series.source_format != "DICOM" else "uncalibrated pixels"
             self.acquisition.setText(f"{data.series.modality} · {data.source.shape[2]} × {data.source.shape[1]}\n{spacing_text}")
         if data.mpr_ready:
             point = np.asarray(data.canonical_origin) + np.asarray(self.cursor) * data.canonical_spacing
-            self.position_label.setText(f"Patient LPS · mm\nL {point[0]:.1f}   P {point[1]:.1f}   S {point[2]:.1f}")
+            self.position_label.setText(f"LPS · {data.geometry_unit}\nL {point[0]:.1f}   P {point[1]:.1f}   S {point[2]:.1f}")
         else:
             self.position_label.setText("Patient coordinates unavailable")
         self.update_navigation()
@@ -930,14 +1032,14 @@ class MainWindow(QMainWindow):
             return
         if preset == "Custom":
             return
-        if preset == "DICOM default":
+        if preset == self.preset.itemText(0):
             width, level = self.data.frame_window(self.source_index) if self.mode == "2D stack" else (self.data.width, self.data.level)
         elif preset == "Auto contrast":
             image = self.active_view.image
             if image is None:
                 image = self.data.source[self.source_index]
             lo, hi = np.percentile(image, (1, 99))
-            width, level = max(1, hi - lo), (lo + hi) / 2
+            width, level = max(self.data.window_minimum, hi - lo), (lo + hi) / 2
         else:
             width, level = PRESETS[preset]
         self.change_window(width, level, from_preset=True)
@@ -1021,14 +1123,25 @@ class MainWindow(QMainWindow):
         if checked:
             self.resizeDocks([self.metadata_dock], [260], Qt.Orientation.Vertical)
 
-    def image_capture(self, annotated=True, include_information=False):
+    def update_colorbars(self, visible=None, persist=True):
+        visible = self.colorbar_action.isChecked() if visible is None else bool(visible)
+        for view in self.views.values():
+            view.set_colorbar_visible(visible)
+        self.volume_view.set_colorbar_visible(visible)
+        if persist:
+            self.settings.setValue("display/colorbar", visible)
+            self.settings.sync()
+
+    def image_capture(self, annotated=True, include_information=False, include_colorbar=None):
         if self.mode == "3D volume":
-            return self.volume_view.capture()
-        return self.active_view.render_image(annotated, include_information)
+            include = self.colorbar_action.isChecked() if include_colorbar is None else include_colorbar
+            return self.volume_view.capture(include_colorbar=annotated and include)
+        return self.active_view.render_image(annotated, include_information, include_colorbar)
 
     def export_image(self):
         self.stop_cine()
-        options = ExportDialog(self, volume=self.mode == "3D volume")
+        options = ExportDialog(self, volume=self.mode == "3D volume",
+                               colorbar_visible=self.colorbar_action.isChecked(), colorbar_available=not self.data.is_color)
         if options.exec() != QDialog.DialogCode.Accepted:
             return
         suggested = "lumen-volume.png" if self.mode == "3D volume" else (
@@ -1038,7 +1151,8 @@ class MainWindow(QMainWindow):
             try:
                 if not Path(path).suffix:
                     path += ".png"
-                image = self.image_capture(options.annotated, options.include_information)
+                image = self.image_capture(options.annotated or self.mode == "3D volume", options.include_information,
+                                           options.include_colorbar)
                 if image is None or not image.save(path, "PNG"):
                     raise OSError("Could not save the image to this location.")
                 self.statusBar().showMessage(f"Saved {Path(path).name}")
@@ -1065,8 +1179,80 @@ class MainWindow(QMainWindow):
         except Exception as exc:
             QMessageBox.warning(self, "Copy failed", str(exc))
 
+    def export_nifti_series(self):
+        if self.data is None or self.busy:
+            return
+        self.stop_cine()
+        path, _ = QFileDialog.getSaveFileName(self, "Export selected series / volume as NIfTI", "volume.nii.gz",
+                                             "Compressed NIfTI (*.nii.gz);;NIfTI (*.nii)")
+        if path:
+            data = self.data
+            self.start_job(lambda progress: export_nifti(data, Path(path), progress, overwrite=True),
+                           lambda files: self.statusBar().showMessage(f"Exported {len(files)} file(s): " + ", ".join(p.name for p in files)),
+                           error_title="NIfTI export failed", discard_on_cancel=False)
+
     def fullscreen(self):
-        self.showNormal() if self.isFullScreen() else self.showFullScreen()
+        self.showMaximized() if self.isFullScreen() else self.showFullScreen()
+
+    def set_theme(self, name, persist=True):
+        if name not in THEME_NAMES:
+            return False
+        try:
+            assets = load_theme(name)
+        except (ValueError, OSError) as error:
+            for mode, action in self.theme_actions.items():
+                action.setChecked(mode == self.theme_name)
+            self.theme_toggle.setChecked(QApplication.instance().palette().window().color().lightness() < 128)
+            QMessageBox.warning(self, "Appearance could not be loaded", str(error))
+            return False
+        self.theme_name = name
+        apply_theme_assets(QApplication.instance(), assets)
+        for action in self.findChildren(QAction):
+            action.setIcon(retheme_icon(action.icon()))
+        for button in self.findChildren(QAbstractButton):
+            button.setIcon(retheme_icon(button.icon()))
+        self.browser._icons = {key: icon(key) for key in self.browser._icons}
+        iterator = QTreeWidgetItemIterator(self.browser)
+        while iterator.value():
+            item = iterator.value()
+            item.setIcon(0, retheme_icon(item.icon(0)))
+            iterator += 1
+        for mode, action in self.theme_actions.items():
+            action.setChecked(mode == name)
+        dark = QApplication.instance().palette().window().color().lightness() < 128
+        self.theme_toggle.setChecked(dark)
+        self.theme_toggle.setToolTip("Switch to light theme" if dark else "Switch to dark theme")
+        for widget in QApplication.instance().allWidgets():
+            if isinstance(widget, ClassicTitleBar):
+                widget.set_theme(name, assets=assets)
+        if persist:
+            self.settings.setValue("appearance/theme", name)
+            self.settings.setValue("appearance/version", 2)
+            self.settings.sync()
+        return True
+
+    def toggle_theme(self, dark):
+        pair = ("modern-light", "cockpit") if self.theme_name in MODERN_THEMES else ("light", "dark")
+        self.set_theme(pair[bool(dark)])
+
+    def reload_appearance_assets(self):
+        clear_icon_cache()
+        clear_glyph_cache()
+        if self.set_theme(self.theme_name, persist=False):
+            refresh_application_icons(QApplication.instance())
+            self.statusBar().showMessage("Appearance assets reloaded")
+            return True
+        return False
+
+    def show_about(self):
+        dialog = QMessageBox(self)
+        dialog.setWindowTitle("About Lumen")
+        dialog.setIconPixmap(application_icon().pixmap(48, 48))
+        dialog.setTextFormat(Qt.TextFormat.PlainText)
+        dialog.setText(f"Lumen {__version__}\nOffline DICOM / NIfTI viewer · Python / Qt / VTK\n\n"
+                       "Research and education software. Not validated for diagnostic use.\n"
+                       "Input images are opened read only.\nNo networking, accounts, or uploads.")
+        dialog.exec()
 
     def show_help(self):
         QMessageBox.information(self, "Viewer controls",
@@ -1080,7 +1266,10 @@ class MainWindow(QMainWindow):
             "A: three-point angle · T: text\n"
             "R: reset · F: fit · I: invert · H/V: flip · ]: rotate\n"
             "Space: cine · Delete: remove last mark · Esc: cancel drawing\n"
-            "Ctrl+I: metadata · Ctrl+S: save view · Ctrl+C: copy view\n\n"
+            "Ctrl+I: metadata · Ctrl+S: save PNG · Ctrl+C: copy view\n"
+            "Ctrl+Shift+S: export selected series / volume as NIfTI\n"
+            "View → Appearance: choose modern or classic light/dark.\n"
+            "Ctrl+Shift+R: reload edited logo and appearance assets.\n\n"
             "MPR uses patient LPS coordinates. Click a pane to select it.\n"
             "In 3D, left drag orbits, middle drag pans, and the wheel zooms.\n"
             "The cutaway slider removes the posterior side of the volume.")
@@ -1088,11 +1277,28 @@ class MainWindow(QMainWindow):
     def show_notices(self):
         candidates = [Path(__file__).resolve().parent.parent / "THIRD_PARTY" / "README.txt",
                       Path(__file__).resolve().parent.parent / "build" / "release_materials" / "THIRD_PARTY" / "README.txt"]
-        for path in candidates:
-            if path.is_file():
-                QDesktopServices.openUrl(QUrl.fromLocalFile(str(path)))
-                return
-        QMessageBox.information(self, "Third-party notices", "License texts are supplied in the portable release's THIRD_PARTY folder.")
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Third-party notices")
+        dialog.setMinimumWidth(430)
+        layout = QVBoxLayout(dialog)
+        notices = QLabel()
+        notices.setTextFormat(Qt.TextFormat.RichText)
+        notices.setWordWrap(True)
+        notices.setOpenExternalLinks(True)
+        license_path = Path(__file__).resolve().parent / "resources" / "fluent" / "LICENSE.txt"
+        text = ("<p>Fluent System Icons<br>Copyright © 2020 Microsoft Corporation<br>"
+                f'<a href="{QUrl.fromLocalFile(str(license_path)).toString()}">MIT license</a></p>')
+        runtime = next((path for path in candidates if path.is_file()), None)
+        if runtime:
+            text += f'<p><a href="{QUrl.fromLocalFile(str(runtime)).toString()}">Runtime library notices</a></p>'
+        else:
+            text += "<p>Runtime library notices are supplied in the portable release’s THIRD_PARTY folder.</p>"
+        notices.setText(text)
+        layout.addWidget(notices)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
+        buttons.rejected.connect(dialog.reject)
+        layout.addWidget(buttons)
+        dialog.exec()
 
     def dragEnterEvent(self, event):
         if event.mimeData().hasUrls() and not self.busy:
@@ -1118,21 +1324,27 @@ class MainWindow(QMainWindow):
         event.accept()
 
 
-def main(argv=None):
-    parser = argparse.ArgumentParser(description="Lumen offline DICOM viewer")
-    parser.add_argument("paths", nargs="*", help="DICOM files, directories, DICOMDIR, or ZIP archives")
+def main(argv=None, splash=None):
+    parser = argparse.ArgumentParser(description="Lumen offline DICOM / NIfTI viewer")
+    parser.add_argument("paths", nargs="*", help="DICOM / NIfTI files, directories, DICOMDIR, or ZIP archives")
     parser.add_argument("--demo", action="store_true", help="Open the generated phantom")
     args = parser.parse_args(argv)
-    app = QApplication(sys.argv[:1])
+    app = QApplication.instance() or QApplication(sys.argv[:1])
     app.setApplicationName("Lumen DICOM")
     app.setApplicationVersion(__version__)
     app.setOrganizationName("Lumen")
-    app.setWindowIcon(QIcon(str(Path(__file__).resolve().parent / "resources" / "lumen.svg")))
+    app.setWindowIcon(application_icon())
     app.setStyle("Fusion")
-    app.setStyleSheet(STYLE)
-    app.setFont(QFont("Segoe UI", 10))
     window = MainWindow()
-    window.show()
+    if app.primaryScreen():
+        available = app.primaryScreen().availableGeometry()
+        window.setMinimumSize(min(window.minimumWidth(), available.width()), min(window.minimumHeight(), available.height()))
+        window.resize(min(window.width(), max(window.minimumWidth(), available.width() - 40)),
+                      min(window.height(), max(window.minimumHeight(), available.height() - 40)))
+        window.move(available.center() - window.rect().center())
+    window.showMaximized()
+    if splash:
+        QTimer.singleShot(0, lambda: splash.finish(window))
     if args.paths:
         QTimer.singleShot(50, lambda: window.open_paths(args.paths))
     elif args.demo:

@@ -9,6 +9,7 @@ from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem
 
 from .colors import lookup_table, window_pixels
 from .annotations import file_annotations
+from .colorbar import ColorBar, BAR_WIDTH, append_colorbar
 
 
 @dataclass
@@ -27,7 +28,7 @@ def angle_degrees(points: list[QPointF], spacing: tuple[float, float]) -> float:
     return float(np.degrees(np.arccos(np.clip(np.dot(u, v) / denominator, -1, 1)))) if denominator else 0
 
 
-def roi_statistics(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spacing):
+def roi_statistics(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spacing, precision=".1f"):
     height, width = image.shape[:2]
     x0, x1 = sorted((p.x(), q.x()))
     y0, y1 = sorted((p.y(), q.y()))
@@ -47,8 +48,8 @@ def roi_statistics(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spa
     if image.ndim == 3:
         channels = crop.reshape(-1, crop.shape[-1]).mean(axis=0)
         return f"Area {area:.1f} {{area_unit}} · RGB mean " + ", ".join(f"{v:.1f}" for v in channels[:3])
-    return (f"Area {area:.1f} {{area_unit}} · mean {crop.mean():.1f} {{unit}}\n"
-            f"SD {crop.std():.1f} · min {crop.min():.1f} · max {crop.max():.1f}")
+    return (f"Area {area:.1f} {{area_unit}} · mean {crop.mean():{precision}} {{unit}}\n"
+            f"SD {crop.std():{precision}} · min {crop.min():{precision}} · max {crop.max():{precision}}")
 
 
 class SliceView(QGraphicsView):
@@ -64,7 +65,7 @@ class SliceView(QGraphicsView):
         self.setScene(QGraphicsScene(self))
         self.item = QGraphicsPixmapItem()
         self.scene().addItem(self.item)
-        self.setBackgroundBrush(QColor("#060a10"))
+        self.setBackgroundBrush(QColor("#101010"))
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -92,6 +93,8 @@ class SliceView(QGraphicsView):
         self.show_crosshair = True
         self.show_overlays = True
         self.units = "value"
+        self.distance_unit = "px"
+        self.dicom_window = True
         self.directions = None
         self._needs_fit = True
         self._auto_fit = True
@@ -102,6 +105,10 @@ class SliceView(QGraphicsView):
         self.show_dicom_overlays = True
         self._render_key = None
         self._annotation_key = None
+        self.show_colorbar = True
+        self.colorbar = ColorBar(self)
+        self.colorbar.setToolTip("Pixel values after the modality transform. Values outside the window use its end colors.")
+        self.colorbar.hide()
 
     def set_file_annotations(self, dataset, layers=(), reconstruction=False):
         layers = list(layers)
@@ -126,8 +133,9 @@ class SliceView(QGraphicsView):
         self.viewport().update()
 
     def set_image(self, image, spacing, key, width, level, colormap, inverted, calibrated,
-                  subtitle="", crosshair=None, directions=None, units="value"):
+                  subtitle="", crosshair=None, directions=None, units="value", spatial_unit=None, dicom_window=True):
         changed_size = self.image is None or self.image.shape != image.shape or self.spacing != spacing
+        needs_fit = self._needs_fit
         if key != self.key:
             self.pending.clear()
             self.preview = None
@@ -136,14 +144,17 @@ class SliceView(QGraphicsView):
         self.colormap, self.inverted = colormap, inverted
         self.calibrated, self.subtitle, self.crosshair = calibrated, subtitle, crosshair
         self.directions, self.units = directions, units
-        render_key = (id(image), spacing, width, level, colormap, inverted)
+        self.distance_unit = spatial_unit or ("mm" if calibrated else "px")
+        self.dicom_window = dicom_window
+        render_key = (id(image), spacing, width, level, colormap, inverted, dicom_window)
         if render_key != self._render_key:
             self.refresh_pixels()
             self._render_key = render_key
         else:
             self.viewport().update()
-        if changed_size or self._needs_fit:
-            self.fit_image(reset_orientation=self._needs_fit)
+        self._sync_colorbar()
+        if changed_size or needs_fit:
+            self.fit_image(reset_orientation=needs_fit)
 
     def refresh_pixels(self):
         if self.image is None:
@@ -151,7 +162,7 @@ class SliceView(QGraphicsView):
         if self.image.ndim == 3:
             rgb = np.ascontiguousarray(self.image[:, :, :3], dtype=np.uint8)
         else:
-            rgb = lookup_table(self.colormap, self.inverted)[window_pixels(self.image, self.width, self.level)]
+            rgb = lookup_table(self.colormap, self.inverted)[window_pixels(self.image, self.width, self.level, self.dicom_window)]
         height, width = rgb.shape[:2]
         qimage = QImage(rgb.data, width, height, rgb.strides[0], QImage.Format.Format_RGB888).copy()
         self.item.setPixmap(QPixmap.fromImage(qimage))
@@ -214,8 +225,26 @@ class SliceView(QGraphicsView):
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
+        self.colorbar.setGeometry(self.rect().width() - BAR_WIDTH, 0, BAR_WIDTH, self.height())
         if self._needs_fit or self._auto_fit:
             self.fit_image()
+
+    def set_colorbar_visible(self, visible):
+        self.show_colorbar = bool(visible)
+        self._sync_colorbar()
+
+    def _sync_colorbar(self):
+        scalar = self.image is not None and self.image.ndim == 2
+        visible = self.show_colorbar and scalar
+        if scalar:
+            self.colorbar.set_window(self.width, self.level, self.colormap, self.inverted, self.units, self.dicom_window)
+        self.colorbar.setVisible(visible)
+        margin = BAR_WIDTH if visible else 0
+        if self.viewportMargins().right() != margin:
+            self.setViewportMargins(0, 0, margin, 0)
+            if self._auto_fit:
+                self.fit_image()
+        self.colorbar.setGeometry(self.rect().width() - BAR_WIDTH, 0, BAR_WIDTH, self.height())
 
     def pixel_at(self, pos):
         return self.item.mapFromScene(self.mapToScene(pos))
@@ -275,7 +304,11 @@ class SliceView(QGraphicsView):
         x, y = int(round(point.x())), int(round(point.y()))
         if 0 <= y < self.image.shape[0] and 0 <= x < self.image.shape[1]:
             value = self.image[y, x]
-            value_text = ", ".join(str(int(i)) for i in value) if self.image.ndim == 3 else f"{value:.1f} {self.units}"
+            if self.image.ndim == 3:
+                value_text = ", ".join(str(int(i)) for i in value)
+            else:
+                scalar = f"{value:.1f}" if self.dicom_window else f"{value:.6g}"
+                value_text = f"{scalar} {self.units}"
             self.probed.emit(f"{self.plane} · pixel {x}, {y} · {value_text}")
         if self.pending:
             self.preview = point
@@ -284,8 +317,9 @@ class SliceView(QGraphicsView):
             return
         delta = pos - self.start_pos
         if self.drag_kind == "Window" and self.image.ndim == 2:
-            sensitivity = max(1, self.width / 250)
-            self.window_changed.emit(max(1, self.width + delta.x() * sensitivity), self.level + delta.y() * sensitivity)
+            minimum = 1. if self.dicom_window else 1e-6
+            sensitivity = max(1 if self.dicom_window else minimum / 250, self.width / 250)
+            self.window_changed.emit(max(minimum, self.width + delta.x() * sensitivity), self.level + delta.y() * sensitivity)
         elif self.drag_kind == "Pan":
             self._auto_fit = False
             self.horizontalScrollBar().setValue(self.horizontalScrollBar().value() - delta.x())
@@ -344,24 +378,25 @@ class SliceView(QGraphicsView):
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.viewport().width(), self.viewport().height()
-        accent = {"Source": "#77cbbc", "Axial": "#7ec8e3", "Coronal": "#80d7ad", "Sagittal": "#e5b677"}[self.plane]
-        painter.setPen(QPen(QColor(accent if self.active else "#1b2938"), 2 if self.active else 1))
+        accent = {"Source": "#a4c4e0", "Axial": "#7ec8e3", "Coronal": "#80d7ad", "Sagittal": "#e5b677"}[self.plane]
+        painter.setPen(QPen(QColor(accent if self.active else "#454545"), 2 if self.active else 1))
         painter.drawRect(1, 1, w - 2, h - 2)
         if self.show_overlays:
             font = painter.font()
-            font.setPointSize(10)
+            font.setPointSize(9)
             font.setBold(True)
             painter.setFont(font)
             painter.setPen(QColor(accent))
-            painter.drawText(16, 26, self.title.upper())
+            painter.drawText(16, 26, self.title)
             font.setPointSize(9)
             font.setBold(False)
             painter.setFont(font)
-            painter.setPen(QColor("#94a6b9"))
+            painter.setPen(QColor("#b8b8b8"))
             painter.drawText(16, 46, painter.fontMetrics().elidedText(self.subtitle, Qt.TextElideMode.ElideMiddle, w - 32))
             self._draw_file_information(painter, w, h)
             if self.image is not None:
-                painter.drawText(16, h - 16, f"W {self.width:.0f}   L {self.level:.0f}" if self.image.ndim == 2 else "RGB")
+                precision = ".0f" if self.dicom_window else ".6g"
+                painter.drawText(16, h - 16, f"W {self.width:{precision}}   L {self.level:{precision}}" if self.image.ndim == 2 else "RGB")
                 for dx, dy, rect in [(-1, 0, QRectF(7, h / 2 - 10, 35, 24)),
                     (1, 0, QRectF(w - 42, h / 2 - 10, 35, 24)),
                     (0, -1, QRectF(w / 2 - 20, 6, 40, 24)),
@@ -419,16 +454,17 @@ class SliceView(QGraphicsView):
                     rect = QRectF(a, b).normalized()
                     painter.drawEllipse(rect) if mark.tool == "Ellipse" else painter.drawRect(rect)
                     if mark.cached_label is None:
-                        mark.cached_label = roi_statistics(self.image, mark.points[0], mark.points[-1], mark.tool == "Ellipse", self.spacing)
+                        mark.cached_label = roi_statistics(self.image, mark.points[0], mark.points[-1], mark.tool == "Ellipse", self.spacing,
+                                                           ".1f" if self.dicom_window else ".6g")
                     text = mark.cached_label
-                    text = text.format(area_unit="mm²" if self.calibrated else "px²", unit=self.units)
+                    text = text.format(area_unit=self.distance_unit + "²", unit=self.units)
                 else:
                     for i in range(len(points) - 1):
                         painter.drawLine(points[i], points[i + 1])
                     if mark.tool == "Length":
                         p, q = mark.points[0], mark.points[-1]
                         length = math.hypot((p.x() - q.x()) * self.spacing[0], (p.y() - q.y()) * self.spacing[1])
-                        text = f"{length:.2f} {'mm' if self.calibrated else 'px'}"
+                        text = f"{length:.2f} {self.distance_unit}"
                     elif mark.tool == "Angle" and len(mark.points) == 3:
                         text = f"{angle_degrees(mark.points, self.spacing):.1f}°"
                     elif mark.tool == "Arrow":
@@ -449,7 +485,7 @@ class SliceView(QGraphicsView):
                 painter.fillRect(box, QColor(5, 10, 16, 210))
                 painter.drawText(box.adjusted(5, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, text)
 
-    def render_image(self, annotated=True, include_information=False):
+    def render_image(self, annotated=True, include_information=False, include_colorbar=None):
         """Export the entire displayed image, independently of viewport guides and zoom/pan."""
         if self.image is None:
             return QImage()
@@ -484,4 +520,7 @@ class SliceView(QGraphicsView):
         if annotated and include_information:
             self._draw_file_information(painter, width, height, standalone=True)
         painter.end()
+        include_colorbar = self.show_colorbar if include_colorbar is None else include_colorbar
+        if annotated and include_colorbar and self.image.ndim == 2:
+            return append_colorbar(output, self.colorbar.scale)
         return output
