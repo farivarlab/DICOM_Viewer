@@ -1,0 +1,155 @@
+{
+  "project": "Microsoft Fluent System Icons",
+  "repository": "https://github.com/microsoft/fluentui-system-icons",
+  "commit": "9bfae3d782fda4c8764f2128cec4d0dda160b283",
+  "license": "MIT",
+  "icons": [
+    {
+      "file": "open.svg",
+      "upstream": "assets/Document Arrow Right/SVG/ic_fluent_document_arrow_right_20_regular.svg",
+      "sha256": "0520222413b68241880578b1527d8a74911df0c6c8cc0a477432cfc6f03c4c3a"
+    },
+    {
+      "file": "folder.svg",
+      "upstream": "assets/Folder Open/SVG/ic_fluent_folder_open_20_regular.svg",
+      "sha256": "c5f8b2db9af20a454c1f05ce6eda4b21c99f1b8677b14b6d7d07d5817140a487"
+    },
+    {
+      "file": "demo.svg",
+      "upstream": "assets/Cube/SVG/ic_fluent_cube_20_regular.svg",
+      "sha256": "b093bde5db589527c58f35d0a472c808489ec7795bf5201c22df5e9119064b5d"
+    },
+    {
+      "file": "sun.svg",
+      "upstream": "assets/Weather Sunny/SVG/ic_fluent_weather_sunny_20_regular.svg",
+      "sha256": "c6a4eb912c9e9c245ab5dfa77c7a8dea691a1acf8869190449bb908830ff9b93"
+    },
+    {
+      "file": "moon.svg",
+      "upstream": "assets/Weather Moon/SVG/ic_fluent_weather_moon_20_regular.svg",
+      "sha256": "9ffadd57a15c85524fdb979f42773e2a58199b07ccc39b188d7a6a1392a41cbe"
+    },
+    {
+      "file": "pan.svg",
+      "upstream": "assets/Arrow Move/SVG/ic_fluent_arrow_move_20_regular.svg",
+      "sha256": "805e5c7f86ade11d7bdb0610e14d2f544655cda4689615e5559a367ae005fde7"
+    },
+    {
+      "file": "zoom.svg",
+      "upstream": "assets/Zoom In/SVG/ic_fluent_zoom_in_20_regular.svg",
+      "sha256": "537389780dda6beb117531d72335a0d7fc0e9ac0a40e3503665f608f419ff9ae"
+    },
+    {
+      "file": "fit.svg",
+      "upstream": "assets/Scale Fit/SVG/ic_fluent_scale_fit_20_regular.svg",
+      "sha256": "c7da64e49da8bcbf05ff5dd7bd94b8af367b189ec3aba739b8961662a1c95dee"
+    },
+    {
+      "file": "reset.svg",
+      "upstream": "assets/Arrow Reset/SVG/ic_fluent_arrow_reset_20_regular.svg",
+      "sha256": "8f7ee75b0194f186e8de8de57272c0237f10fae1c9dcd0d579ec241848324296"
+    },
+    {
+      "file": "rotate.svg",
+      "upstream": "assets/Arrow Rotate Clockwise/SVG/ic_fluent_arrow_rotate_clockwise_20_regular.svg",
+      "sha256": "907dd65f5834aa3184060f10d9382c2eb17dc05bbdbeb84e11ce16c8257e52f7"
+    },
+    {
+      "file": "clear.svg",
+      "upstream": "assets/Eraser/SVG/ic_fluent_eraser_20_regular.svg",
+      "sha256": "8e416de6d847eebb2dc8409f5610585ef418658596ffe56cf03d2a488e1bbc3d"
+    },
+    {
+      "file": "play.svg",
+      "upstream": "assets/Play/SVG/ic_fluent_play_20_regular.svg",
+      "sha256": "0666c1378f63d4d5c32f91b4107086bc14799dff306027976be591da8843ae45"
+    },
+    {
+      "file": "pause.svg",
+      "upstream": "assets/Pause/SVG/ic_fluent_pause_20_regular.svg",
+      "sha256": "cad333d70ced0f6f63d0c17689df6d269b6e0698bfca2fcae994aa30c677dd61"
+    },
+    {
+      "file": "save.svg",
+      "upstream": "assets/Image/SVG/ic_fluent_image_20_regular.svg",
+      "sha256": "3a0db668b30da746f0bf6805c9c95debf35d1180aa3e7033b9409898f7e3c876"
+    },
+    {
+      "file": "copy.svg",
+      "upstream": "assets/Copy/SVG/ic_fluent_copy_20_regular.svg",
+      "sha256": "b05642b32388ba4c7701c381023c02d20bf48231229bf371f0ca5f10196b7d5b"
+    },
+    {
+      "file": "tags.svg",
+      "upstream": "assets/Table/SVG/ic_fluent_table_20_regular.svg",
+      "sha256": "7acf041bc47eb694a3c3c74ba6d4d345cee8941c5f43dfe832494bfe4b8f0570"
+    },
+    {
+      "file": "fullscreen.svg",
+      "upstream": "assets/Full Screen Maximize/SVG/ic_fluent_full_screen_maximize_20_regular.svg",
+      "sha256": "bcef45dfd2fc91dfef2e06079278330f774557a49451fe07b51834b1d65859ea"
+    },
+    {
+      "file": "camera.svg",
+      "upstream": "assets/Camera/SVG/ic_fluent_camera_20_regular.svg",
+      "sha256": "950376e33dbf494c11adb3c13776ae620959c720a071ff6358ba4e7260a0a7ff"
+    },
+    {
+      "file": "help.svg",
+      "upstream": "assets/Question Circle/SVG/ic_fluent_question_circle_20_regular.svg",
+      "sha256": "2a74ef3c4c4fe762581ba7339c01be2129b7e646a8f399703f1426558275a639"
+    },
+    {
+      "file": "info.svg",
+      "upstream": "assets/Info/SVG/ic_fluent_info_20_regular.svg",
+      "sha256": "498bc2a24fb99480e7565b502467a4cc8e967b41b0c374c1283a68fc0da73b7a"
+    },
+    {
+      "file": "exit.svg",
+      "upstream": "assets/Door Arrow Right/SVG/ic_fluent_door_arrow_right_20_regular.svg",
+      "sha256": "2d2ce5925f5731be9137cce6737fadb6da68a3425fc581efb968ed186523331b"
+    },
+    {
+      "file": "close.svg",
+      "upstream": "assets/Dismiss/SVG/ic_fluent_dismiss_20_regular.svg",
+      "sha256": "e84ad771fa8afba8e3ef52c98d9ab2d8ef4fc8e23c5954766a1c4e88fc13b355"
+    },
+    {
+      "file": "export.svg",
+      "upstream": "assets/Arrow Export/SVG/ic_fluent_arrow_export_20_regular.svg",
+      "sha256": "ee47d4a260546d0497ecb3d292ee1fb2a6781ef9d0549d3f94ba4ab8625c6bcc"
+    },
+    {
+      "file": "patient.svg",
+      "upstream": "assets/Person/SVG/ic_fluent_person_20_regular.svg",
+      "sha256": "c75bdf7e4c02437f3ad35c305253f4eaf4e2dfb2cc11e30d5a31af02a391e7ad"
+    },
+    {
+      "file": "case.svg",
+      "upstream": "assets/Briefcase Medical/SVG/ic_fluent_briefcase_medical_20_regular.svg",
+      "sha256": "3889762f7f2a3cd29c65450911f088f522ef2a73299e332e558392b037b0baf5"
+    },
+    {
+      "file": "series.svg",
+      "upstream": "assets/Image Multiple/SVG/ic_fluent_image_multiple_20_regular.svg",
+      "sha256": "838dc52d7065084e12f61591872c99b09d1f901ad44482c7dd8ab55926cf81b1"
+    },
+    {
+      "file": "image.svg",
+      "upstream": "assets/Image/SVG/ic_fluent_image_20_regular.svg",
+      "sha256": "3a0db668b30da746f0bf6805c9c95debf35d1180aa3e7033b9409898f7e3c876"
+    },
+    {
+      "file": "previous.svg",
+      "upstream": "assets/Chevron Left/SVG/ic_fluent_chevron_left_20_regular.svg",
+      "sha256": "23926710858e2fcaf18178b613f28f35bce3ab8b9238836f7aace406a597d14a"
+    },
+    {
+      "file": "next.svg",
+      "upstream": "assets/Chevron Right/SVG/ic_fluent_chevron_right_20_regular.svg",
+      "sha256": "212c611689abb60d2cd56d868e070e44a4c4fbe1d4392622040d1d10a46463e2"
+    }
+  ],
+  "LICENSE.txt_sha256": "69bc45dc42b9acb96a69823adbc6ae538374e3c0bde169b855b32c48eaaef52f",
+  "NOTICE.txt_sha256": "2fb367a84df52c8b6f8401119708014b327f595554d41712d7407151c9ce73ef"
+}

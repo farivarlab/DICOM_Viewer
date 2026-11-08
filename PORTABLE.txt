@@ -1,0 +1,46 @@
+Lumen DICOM Viewer 0.2.0 - portable Windows x64
+
+Choose either release:
+- Single executable: run Lumen-0.2.0-win64.exe. It extracts its runtime to your
+  Windows temporary folder at startup. No Python installation is required.
+- Portable ZIP: extract the complete folder and run Lumen.exe. Keep _internal
+  beside the EXE. This version starts faster and its shared libraries can be replaced.
+
+Open files/folders from the toolbar or drag them into the viewer. Ctrl+O opens
+files; Ctrl+Shift+O opens a folder. The mouse wheel browses images; Ctrl+wheel
+zooms; right drag adjusts contrast; middle drag pans. Ctrl+I toggles metadata.
+Choose MPR or 3D explicitly from the layout menu. Ctrl+S exports PNG images with
+or without annotations. F1 shows all controls.
+
+Open DICOM or NIfTI (.nii/.nii.gz) files. Ctrl+Shift+S exports the selected
+series/volume as NIfTI; the native dcm2niix converter is included. View > Appearance
+selects modern/classic light/dark themes. The window starts maximized; F11 toggles
+full screen. View > Colorbar controls the image scale. Annotated PNG exports can
+include a colorbar. Edit the adjacent logo.svg and reload with Ctrl+Shift+R to
+customize the application icon.
+
+All image processing is local. Input DICOM files are read only. No example
+patient studies or validation images are included in this release.
+
+Requires Windows x64 and an OpenGL-capable graphics driver for 3D. This unsigned
+development release has not been clinically validated. No installer, service,
+account, or registry registration is needed.
+
+Codec coverage: native RLE, JPEG baseline, JPEG lossless, JPEG-LS and JPEG 2000
+through the bundled pydicom/GDCM/CharLS/OpenJPEG/Pillow libraries. True 12-bit
+Extended JPEG is not supported by this bundled codec set. Unsupported data
+produces a decoding error.
+
+Third-party license texts and source links are in THIRD_PARTY (beside the
+portable-folder EXE and embedded in the single-file executable). Application
+source and build instructions are in the accompanying source repository/archive.
+The application is distributed under the MIT license in LICENSE.txt. Dependency
+licenses remain separate. The source archive permits rebuilding with modified
+dependencies.
+
+Local automated verification (optional):
+Lumen.exe --self-test --report C:\Temp\lumen-check\report.json
+Lumen.exe --self-test --input C:\Scans\Study --report C:\Temp\lumen-check\report.json
+
+These checks create technical JSON reports and image previews at the chosen
+report location. Original images are not modified or transmitted.
