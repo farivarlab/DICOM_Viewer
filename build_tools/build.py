@@ -56,8 +56,9 @@ def build_binaries(material):
     # Dependency discovery must not collect similarly named DLLs from unrelated tools.
     system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
     clean_path = os.pathsep.join((str(system_root / "System32"), str(system_root), str(Path(sys.executable).parent)))
-    env = dict(os.environ, PYINSTALLER_CONFIG_DIR=str(ROOT / "build" / "pyinstaller-cache"), PATH=clean_path)
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean", str(ROOT / "Lumen.spec")],
+    env = dict(os.environ, PYINSTALLER_CONFIG_DIR=str(ROOT / "build" / f"pyinstaller-cache-{__version__}"), PATH=clean_path)
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+                    "--workpath", str(ROOT / "build" / f"release-{__version__}"), str(ROOT / "Lumen.spec")],
                    cwd=ROOT, env=env, check=True)
 
 
