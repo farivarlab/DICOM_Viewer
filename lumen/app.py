@@ -1250,7 +1250,8 @@ class MainWindow(QMainWindow):
         dialog.setIconPixmap(application_icon().pixmap(48, 48))
         dialog.setTextFormat(Qt.TextFormat.PlainText)
         dialog.setText(f"Lumen {__version__}\nOffline DICOM / NIfTI viewer · Python / Qt / VTK\n\n"
-                       "Research and education software. Not validated for diagnostic use.\n"
+                       "Not For Diagnostic Use\n\n"
+                       "Research and education software.\n"
                        "Input images are opened read only.\nNo networking, accounts, or uploads.")
         dialog.exec()
 
