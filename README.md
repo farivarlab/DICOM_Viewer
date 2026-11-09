@@ -4,6 +4,22 @@ A local Windows desktop viewer built with Python, Qt (PySide6), NumPy/SciPy, pyd
 
 **Status:** development release 0.2.0, including themes, editable icons, colorbars and NIfTI support. Tested on Windows with generated fixtures and a supplied 299-slice MRI series. Portable builds include the native NIfTI converter and do not require Python to be installed.
 
+## Screenshots
+
+These screenshots use the built-in synthetic thorax phantom; no patient data is shown. Not For Diagnostic Use.
+
+**2D viewing · light theme.** Slice browsing, distance measurement, image annotations and a calibrated colorbar.
+
+![Light theme with the study browser, a 2D phantom slice, distance measurement and HU colorbar](docs/screenshots/stack-light.png)
+
+**Multiplanar reconstruction · dark theme.** Linked axial, coronal and sagittal views with crosshairs.
+
+![Dark theme showing linked axial, coronal and sagittal reconstructions of the synthetic phantom](docs/screenshots/mpr-dark.png)
+
+**3D volume rendering.** Native VTK rendering with the CT bone preset, opacity and cutaway controls, and an orientation cube.
+
+![Light theme with a 3D rendering of the synthetic phantom and volume-rendering controls](docs/screenshots/volume-light.png)
+
 ## Run from source
 
 The development environment in this workspace is already prepared. Double-click **`Lumen DICOM Viewer.lnk`** to launch without a terminal. `Run-Lumen.cmd` remains available, or run:
