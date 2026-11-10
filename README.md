@@ -71,6 +71,8 @@ The **Colorbar** checkbox or **View → Colorbar** toggles scalar legends in the
 
 **Export PNG → Include colorbar** adds the scale in a separate right margin, keeping the image pixels and measurements clear. It can be selected for annotated images and 3D captures. Unannotated 2D output always excludes the colorbar. The color scale does not rotate or flip with the image.
 
+The **Study browser** and **Display** panels can be detached by dragging their title bars or double-clicking them, just like the DICOM tags pane. Drag a panel back to either side to dock it, or double-click its floating title bar. Closed panels can be reopened from **View → Panels**.
+
 ## NIfTI import and conversion
 
 Open or drop `.nii` / `.nii.gz` files through the same browser as DICOM. Each time point in a 4D image appears as a separate selectable volume, with ordinary 2D viewing first and MPR/3D available on request. NIfTI RAS geometry is mapped into the viewer's LPS coordinates. Meter and micron units are converted to millimeters; unspecified units are labeled **units**, rather than claiming millimeter calibration. Complex images display magnitude. Unsupported vector/tensor or higher-dimensional images produce an explanatory error.

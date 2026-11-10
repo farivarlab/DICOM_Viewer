@@ -13,7 +13,7 @@ from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
     QLabel, QPushButton, QToolBar, QComboBox, QDoubleSpinBox, QSpinBox,
-    QSlider, QLineEdit, QSplitter, QStackedWidget, QDockWidget, QToolButton,
+    QSlider, QLineEdit, QStackedWidget, QDockWidget, QToolButton,
     QFileDialog, QMessageBox, QCheckBox, QFormLayout, QScrollArea, QDialog,
     QAbstractButton, QTreeWidgetItemIterator, QMenu, QSizePolicy, QDialogButtonBox, QMenuBar,
 )
@@ -231,6 +231,9 @@ class MainWindow(QMainWindow):
         for action in (self.fit_action, self.reset_action, self.invert_action, self.rotate_action,
                        self.flip_h_action, self.flip_v_action, self.tags_action, self.colorbar_action, self.fullscreen_action):
             view_menu.addAction(action)
+        panels_menu = view_menu.addMenu("Panels")
+        panels_menu.addAction(self.browser_dock.toggleViewAction())
+        panels_menu.addAction(self.display_dock.toggleViewAction())
         theme_menu = view_menu.addMenu("Appearance")
         self.theme_group = QActionGroup(self)
         self.theme_actions = {}
@@ -304,16 +307,11 @@ class MainWindow(QMainWindow):
         self.tool_bar.addAction(self.clear_action)
 
     def _create_workspace(self):
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
-        self.setCentralWidget(splitter)
         sidebar = QWidget()
         sidebar.setMinimumWidth(235)
-        sidebar.setMaximumWidth(480)
         side = QVBoxLayout(sidebar)
         side.setContentsMargins(8, 6, 8, 8)
         side.setSpacing(6)
-        side.addWidget(label("Study browser", "panelHeader"))
         self.open_button = QPushButton("Open folder…")
         self.open_button.setIcon(icon("folder"))
         self.open_button.clicked.connect(self.open_folder)
@@ -328,7 +326,11 @@ class MainWindow(QMainWindow):
         side.addWidget(self.browser, 1)
         self.acquisition = label("No series loaded", "muted", True)
         side.addWidget(self.acquisition)
-        splitter.addWidget(sidebar)
+        self.browser_dock = QDockWidget("Study browser", self)
+        self.browser_dock.setObjectName("studyBrowserDock")
+        self.browser_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.browser_dock.setWidget(sidebar)
+        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.browser_dock)
 
         center = QWidget()
         center_layout = QVBoxLayout(center)
@@ -419,12 +421,11 @@ class MainWindow(QMainWindow):
         self.slice_label.setMinimumWidth(44)
         nav.addWidget(self.slice_label)
         center_layout.addWidget(self.navigation)
-        splitter.addWidget(center)
+        self.setCentralWidget(center)
 
         inspector_scroll = QScrollArea()
         inspector_scroll.setWidgetResizable(True)
         inspector_scroll.setMinimumWidth(235)
-        inspector_scroll.setMaximumWidth(300)
         inspector = QWidget()
         inspector_scroll.setWidget(inspector)
         settings = QVBoxLayout(inspector)
@@ -432,7 +433,6 @@ class MainWindow(QMainWindow):
         self.display_controls = QWidget()
         display_settings = QVBoxLayout(self.display_controls)
         display_settings.setContentsMargins(0, 0, 0, 0)
-        display_settings.addWidget(label("Display", "section"))
         form = QFormLayout()
         form.setSpacing(6)
         self.preset = QComboBox()
@@ -537,9 +537,12 @@ class MainWindow(QMainWindow):
         settings.addWidget(help_button)
         settings.addStretch()
         self.inspector = inspector
-        splitter.addWidget(inspector_scroll)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([260, 1020, 240])
+        self.display_dock = QDockWidget("Display", self)
+        self.display_dock.setObjectName("displayDock")
+        self.display_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.display_dock.setWidget(inspector_scroll)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.display_dock)
+        self.resizeDocks([self.browser_dock, self.display_dock], [260, 240], Qt.Orientation.Horizontal)
 
     def _create_metadata(self):
         self.metadata_pane = MetadataPane()
