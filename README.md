@@ -4,7 +4,7 @@ A local Windows desktop viewer built with Python, Qt (PySide6), NumPy/SciPy, pyd
 
 **Status:** development release 0.3.0, including themes, editable icons, colorbars and NIfTI support. Tested on Windows with generated fixtures and a supplied 299-slice MRI series. Portable builds include the native NIfTI converter and do not require Python to be installed.
 
-## Windows installer and uninstaller
+## Windows installer
 
 Published downloads are listed on the **[GitHub Releases page](https://github.com/farivarlab/DICOM_Viewer/releases)**. In a release's **Assets**, choose `Lumen-<version>-Setup-win64.exe` for the installer, or the portable EXE/ZIP if you prefer to run without installation. Installers appear there after a release is published; building locally does not upload them.
 
