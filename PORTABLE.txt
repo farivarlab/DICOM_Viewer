@@ -1,7 +1,7 @@
-Lumen DICOM Viewer 0.2.0 - portable Windows x64
+Lumen DICOM Viewer 0.3.0 - portable Windows x64
 
 Choose either release:
-- Single executable: run Lumen-0.2.0-win64.exe. It extracts its runtime to your
+- Single executable: run Lumen-0.3.0-win64.exe. It extracts its runtime to your
   Windows temporary folder at startup. No Python installation is required.
 - Portable ZIP: extract the complete folder and run Lumen.exe. Keep _internal
   beside the EXE. This version starts faster and its shared libraries can be replaced.

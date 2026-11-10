@@ -12,6 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from lumen import __version__
 from notices import generate_notices
+from release_info import runtime_digest, sha256
 
 
 def icon_file(material):
@@ -44,6 +45,7 @@ def main():
 
 
 def build_binaries(material):
+    fingerprint = runtime_digest(ROOT)
     icon_file(material)
     generate_notices(material / "THIRD_PARTY")
     version = tuple(int(n) for n in __version__.split(".")) + (0,)
@@ -60,12 +62,21 @@ def build_binaries(material):
     subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
                     "--workpath", str(ROOT / "build" / f"release-{__version__}"), str(ROOT / "Lumen.spec")],
                    cwd=ROOT, env=env, check=True)
+    if fingerprint != runtime_digest(ROOT):
+        raise RuntimeError("Runtime sources changed during compilation; rebuild before releasing.")
+    payload = ROOT / "dist" / f"Lumen-{__version__}-portable-win64"
+    (material / "BUILD-INFO.json").write_text(json.dumps({
+        "version": __version__, "runtime_digest": fingerprint,
+        "executable_sha256": sha256(payload / "Lumen.exe"),
+    }, indent=2), encoding="utf-8")
+
 
 
 def finalize_release(material):
     dist = ROOT / "dist"
     folder = dist / f"Lumen-{__version__}-portable-win64"
     shutil.copy2(ROOT / "PORTABLE.txt", folder / "READ-ME.txt")
+    shutil.copy2(material / "BUILD-INFO.json", folder / "BUILD-INFO.json")
     shutil.copy2(ROOT / "logo.svg", folder / "logo.svg")
     if (ROOT / "LICENSE").is_file():
         shutil.copy2(ROOT / "LICENSE", folder / "LICENSE.txt")

@@ -2,7 +2,23 @@
 
 A local Windows desktop viewer built with Python, Qt (PySide6), NumPy/SciPy, pydicom, and VTK. It includes native 3D volume rendering and linked patient-coordinate MPR. All processing happens on this computer; there are no servers, accounts, or uploads. Original DICOM files are opened read only.
 
-**Status:** development release 0.2.0, including themes, editable icons, colorbars and NIfTI support. Tested on Windows with generated fixtures and a supplied 299-slice MRI series. Portable builds include the native NIfTI converter and do not require Python to be installed.
+**Status:** development release 0.3.0, including themes, editable icons, colorbars and NIfTI support. Tested on Windows with generated fixtures and a supplied 299-slice MRI series. Portable builds include the native NIfTI converter and do not require Python to be installed.
+
+## Windows installer and uninstaller
+
+Published downloads are listed on the **[GitHub Releases page](https://github.com/farivarlab/DICOM_Viewer/releases)**. In a release's **Assets**, choose `Lumen-<version>-Setup-win64.exe` for the installer, or the portable EXE/ZIP if you prefer to run without installation. Installers appear there after a release is published; building locally does not upload them.
+
+The installer includes Python, Qt/VTK, image codecs and the NIfTI converter. It installs for your Windows account under `%LOCALAPPDATA%\Programs\Lumen`, without an administrator prompt. It creates Start menu entries and offers an optional desktop shortcut. The installer works offline and does not take over DICOM/NIfTI file associations.
+
+To update, close Lumen and run the newer installer. It reuses the installation folder and preserves your preferences and custom `logo.svg`. To remove it, use **Windows Settings → Apps → Installed apps → Lumen DICOM Viewer → Uninstall**, or **Uninstall Lumen** in its Start menu folder. The uninstaller removes the installed program, shortcuts, its preferences and generated icon cache. It leaves image files and exports alone, including files you put inside the installation folder.
+
+To build the installer on Windows, install [Inno Setup 6](https://jrsoftware.org/isinfo.php) and run:
+
+```powershell
+.\Build-Installer.ps1
+```
+
+This first builds the current portable release, then creates `dist/Lumen-0.3.0-Setup-win64.exe` and adds it to `dist/SHA256SUMS.txt`. To compile the installer again without rebuilding the runtime, use `-SkipPortableBuild`; the build checks that its payload still matches the current runtime sources. Use `-CompilerPath 'C:\Path\To\ISCC.exe'` for a nonstandard Inno Setup location. The uninstaller is generated and installed by Setup; it is not a separate download.
 
 ## Screenshots
 
@@ -121,9 +137,9 @@ The application does not depend on its working directory, a database, installed 
 
 The build includes Python, Qt platform/image/SVG libraries, VTK rendering modules, NumPy/SciPy, pydicom and codecs. The output directory contains:
 
-- `dist/Lumen-0.2.0-win64.exe`: single portable executable, with temporary runtime extraction at startup.
-- `dist/Lumen-0.2.0-portable-win64.zip`: extract the complete folder and run `Lumen.exe`; starts faster and keeps shared libraries replaceable.
-- `dist/Lumen-0.2.0-source.zip`: corresponding application source, build scripts and license.
+- `dist/Lumen-0.3.0-win64.exe`: single portable executable, with temporary runtime extraction at startup.
+- `dist/Lumen-0.3.0-portable-win64.zip`: extract the complete folder and run `Lumen.exe`; starts faster and keeps shared libraries replaceable.
+- `dist/Lumen-0.3.0-source.zip`: corresponding application source, build scripts and license.
 - `dist/SHA256SUMS.txt`: checksums for the release files.
 
 Build from 64-bit Python 3.12 on Windows with `Build-Portable.ps1`. It creates an isolated `.build-venv`, installs `requirements-build.txt`, generates icons/notices, and runs `Lumen.spec`. Source files and build scripts are in Git; studies, image exports, environments and binaries are ignored. The notice collector verifies pinned upstream notice checksums and does not use the network during the build. The build environment's DLL search path excludes unrelated local tools.
