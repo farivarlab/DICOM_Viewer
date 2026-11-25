@@ -1,4 +1,5 @@
 from pathlib import Path
+import re
 import tempfile
 import zipfile
 
@@ -29,7 +30,9 @@ def import_paths(paths, progress=lambda _: None):
                         raise ValueError("Password-protected ZIPs are not supported. Extract the archive first.")
                     # No archive-controlled folder paths or symbolic links are created.
                     name = entry.filename.replace("\\", "/")
-                    suffix = ".nii.gz" if name.lower().endswith(".nii.gz") else Path(name).suffix[:16]
+                    # Keep only a plain extension: ':' would address an NTFS stream, and
+                    # characters such as '?' or '*' would abort the whole extraction.
+                    suffix = ".nii.gz" if name.lower().endswith(".nii.gz") else re.sub(r"[^A-Za-z0-9.]", "", Path(name).suffix)[:16]
                     target = root / f"image_{i:06d}{suffix}"
                     with archive.open(entry) as source, target.open("wb") as destination:
                         while chunk := source.read(1024 * 1024):

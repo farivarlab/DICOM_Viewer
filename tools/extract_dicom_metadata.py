@@ -5,9 +5,9 @@ Install:
     python -m pip install "pydicom>=3,<4"
 
 Usage:
-    python extract_dicom_metadata.py image.dcm
-    python extract_dicom_metadata.py image.dcm -o metadata.json
-    python extract_dicom_metadata.py image.dcm --force -o metadata.json
+    python tools/extract_dicom_metadata.py image.dcm
+    python tools/extract_dicom_metadata.py image.dcm -o metadata.json
+    python tools/extract_dicom_metadata.py image.dcm --force -o metadata.json
 
 Includes file meta information, private tags, and nested sequences. Binary
 metadata is preserved as base64 in InlineBinary. Pixel payloads are omitted.

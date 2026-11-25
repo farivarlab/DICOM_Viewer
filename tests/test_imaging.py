@@ -11,7 +11,7 @@ from PySide6.QtCore import QPointF
 from lumen.colors import window_pixels, lookup_table
 from lumen.importer import import_paths
 from lumen.model import scan_paths, load_series, demo_volume
-from lumen.slice_view import angle_degrees, roi_statistics
+from lumen.slice_view import angle_degrees, roi_statistics, pixel_index
 
 
 def write_image(path, pixels, position=None, orientation=(1, 0, 0, 0, 1, 0),
@@ -288,7 +288,47 @@ def test_anisotropic_angle_uses_physical_spacing():
 
 def test_roi_statistics_clips_to_image_and_preserves_units():
     image = np.arange(16).reshape(4, 4)
-    text = roi_statistics(image, QPointF(-5, -5), QPointF(1, 1), False, (2, 3))
+    text = roi_statistics(image, QPointF(-5, -5), QPointF(2, 2), False, (2, 3))
     assert "Area 24.0" in text
     assert "mean 2.5" in text
     assert "max 5.0" in text
+
+
+def test_roi_and_probe_use_pixel_centres():
+    image = np.arange(16).reshape(4, 4)
+    # An outline drawn exactly around one displayed pixel covers that pixel only.
+    assert "Area 1.0" in roi_statistics(image, QPointF(1, 1), QPointF(2, 2), False, (1, 1))
+    assert "mean 5.0" in roi_statistics(image, QPointF(1, 1), QPointF(2, 2), False, (1, 1))
+    assert "Area 9.0" in roi_statistics(image, QPointF(.4, .4), QPointF(2.6, 2.6), False, (1, 1))  # centres .5, 1.5, 2.5
+    assert "Area 1.0" in roi_statistics(image, QPointF(.6, .6), QPointF(2.4, 2.4), False, (1, 1))  # centre 1.5 only
+    assert roi_statistics(image, QPointF(1.6, 1.6), QPointF(2.4, 2.4), False, (1, 1)) == "Empty ROI"
+    assert [pixel_index(v) for v in (0., .49, .5, .99, 1.)] == [0, 0, 0, 0, 1]
+    data = demo_volume()
+    # Clicking anywhere inside displayed pixel 41, including its exact centre, selects voxel 41.
+    for u in (41., 41.5, 41.99):
+        assert data.pixel_to_cursor("Axial", u, 72.5, [0, 0, 0])[:2] == [41, 72]
+
+
+def test_empty_number_of_frames_is_one_frame():
+    from lumen.model import frame_count
+    ds = Dataset()
+    assert frame_count(ds) == 1
+    ds.NumberOfFrames = None
+    assert frame_count(ds) == 1
+    ds.NumberOfFrames = 7
+    assert frame_count(ds) == 7
+
+
+def test_zip_entry_extensions_cannot_name_streams_or_invalid_files(tmp_path):
+    archive = tmp_path / "odd.zip"
+    with zipfile.ZipFile(archive, "w") as handle:
+        handle.writestr("scan.dcm:hidden", b"not dicom")
+        handle.writestr("what.dc?m*", b"not dicom")
+    scan, temporaries = import_paths([archive])
+    try:
+        names = sorted(p.name for p in Path(temporaries[0].name).iterdir())
+        assert names == ["image_000000.dcmhidden", "image_000001.dcm"]
+        assert scan.series == []
+    finally:
+        for folder in temporaries:
+            folder.cleanup()

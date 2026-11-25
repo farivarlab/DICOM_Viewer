@@ -26,8 +26,8 @@ def app():
 
 
 @pytest.fixture
-def window(app):
-    viewer = MainWindow()
+def window(app, tmp_path):
+    viewer = MainWindow(settings_path=tmp_path / "settings.ini")  # never touch the developer's preferences
     viewer.show()
     app.processEvents()
     yield viewer

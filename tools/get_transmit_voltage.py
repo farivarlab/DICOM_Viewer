@@ -2,7 +2,7 @@
 """Print the Siemens XA transmit reference voltage in volts.
 
 Install: python -m pip install pydicom
-Usage:   python get_transmit_voltage.py "scan.dcm"
+Usage:   python tools/get_transmit_voltage.py "scan.dcm"
 Output:  346.318 V
 
 Reads the TransmitterCalibration field in the shared Siemens MR SDS sequence.

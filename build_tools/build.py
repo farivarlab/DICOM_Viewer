@@ -1,6 +1,5 @@
 """Build portable Windows releases without reading studies or local validation artifacts."""
 from pathlib import Path
-import hashlib
 import json
 import os
 import shutil
@@ -90,9 +89,6 @@ def finalize_release(material):
     if (ROOT / "LICENSE").is_file():
         shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")
     files = [dist / f"Lumen-{__version__}-win64.exe", Path(str(folder) + ".zip"), source_zip]
-    def sha256(path):
-        with path.open("rb") as stream:
-            return hashlib.file_digest(stream, "sha256").hexdigest()
     checksum = "\n".join(f"{sha256(path)}  {path.name}" for path in files) + "\n"
     (dist / "SHA256SUMS.txt").write_text(checksum, encoding="ascii")
     (dist / f"SHA256SUMS-{__version__}.txt").write_text(checksum, encoding="ascii")

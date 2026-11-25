@@ -33,7 +33,10 @@ def test_detachable_panels(tmp_path, panel, area):
         assert dock.floating_title_bar.isVisible()
         dock.move(QPoint(100, 100))
         app.processEvents()
-        assert dock.pos() == QPoint(100, 100)
+        # Native Windows places it exactly; the headless "offscreen" platform keeps the
+        # 2px frame it gave the window before the custom caption made it frameless.
+        tolerance = 4 if app.platformName() == "offscreen" else 0
+        assert (dock.pos() - QPoint(100, 100)).manhattanLength() <= tolerance
         window.slider_changed(45)
         window.width_spin.setValue(700)
         assert window.source_index == 45 and window.active_view.width == 700

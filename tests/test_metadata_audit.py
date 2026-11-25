@@ -3,8 +3,9 @@ import csv
 import pytest
 from pydicom.dataset import Dataset
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication, QTableView, QTableWidget, QFileDialog
+from PySide6.QtWidgets import QApplication, QTableView, QTableWidget
 
+from lumen import metadata
 from lumen.metadata import MetadataPane
 
 
@@ -50,7 +51,9 @@ def test_metadata_csv_preserves_formula_guarding(app, monkeypatch, tmp_path):
     pane = MetadataPane()
     pane.set_dataset(dataset, "file.dcm")
     output = tmp_path / "metadata.csv"
-    monkeypatch.setattr(QFileDialog, "getSaveFileName", lambda *args, **kwargs: (str(output), "CSV (*.csv)"))
+    # Patch the themed wrapper the pane actually calls. Patching Qt's class only works
+    # when the wrapper delegates to the native picker, so it hung on headless platforms.
+    monkeypatch.setattr(metadata.QFileDialog, "getSaveFileName", lambda *args, **kwargs: (str(output), "CSV (*.csv)"))
     pane.export()
     with output.open(newline="", encoding="utf-8-sig") as stream:
         rows = list(csv.reader(stream))

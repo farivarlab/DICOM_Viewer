@@ -54,13 +54,22 @@ py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m lumen
 ```
 
+## Command-line tools
+
+`tools/` holds two standalone pydicom scripts that are not part of the viewer:
+
+- `tools/extract_dicom_metadata.py` writes every non-pixel element of a DICOM file, including private tags and nested sequences, to JSON.
+- `tools/get_transmit_voltage.py` prints the transmitter reference voltage stored by Siemens XA MR scanners.
+
+Run them with any Python that has pydicom, for example `.\.venv\Scripts\python.exe tools\extract_dicom_metadata.py image.dcm -o metadata.json`.
+
 ## Included
 
 | Area | Features |
 | --- | --- |
 | Import | DICOM files, scalar NIfTI `.nii` / `.nii.gz` (2D, 3D, 4D), recursive folders, DICOMDIR references, ZIP archives, drag and drop; patient → case/study → series → file/frame browser with search, scrolling and paged expansion; cancellable background indexing and decoding |
 | 2D | Default view when opening a series or file; centered first image; linked browser selection; wheel/slider, previous/next, direct image-number and keyboard navigation; per-file/per-frame window and calibration defaults; window/level and presets; auto contrast; zoom, pan, rotate, flip; MONOCHROME1 inversion; RGB and palette-color display |
-| Tools | Distance, three-point angle, rectangular and elliptical ROI with area/mean/SD/min/max, arrows, text; density probing; undo last mark and clear marks |
+| Tools | Distance, three-point angle, rectangular and elliptical ROI with area/mean/SD/min/max, arrows, text; density probing; select and delete individual marks, or clear all |
 | Colormaps | Grayscale, bone, hot iron, viridis, magma, cool, rainbow; invert any map; labeled colorbars for 2D/MPR and the actual 3D transfer colors |
 | Playback | Cine loop, 1–60 fps, single-frame and multi-frame sequences |
 | MPR | Axial, coronal, sagittal views in patient LPS coordinates; linked crosshairs; MIP, MinIP, average slabs; physical spacing; resampling of oblique acquisitions and uniformly tilted stacks |
@@ -69,7 +78,9 @@ py -3.12 -m venv .venv
 | Metadata/export | Searchable read-only DICOM tags or NIfTI header pane, hidden by default and toggled with Ctrl+I; metadata CSV; annotated/unannotated PNG export; NIfTI series/volume export; clipboard; actual VTK framebuffer capture in the 3D-only layout |
 | Interface | RAWDATA_Viewer's modern/classic light and dark palettes, typography and square window controls; dark image panes; Microsoft Fluent System Icons (MIT) for common commands and original specialist-tool glyphs; maximized startup with a small loading splash; one editable SVG for application identity |
 
-Measurements use millimeters only when pixel spacing is present; otherwise they use pixels. Areas count included pixel centers. User annotations remain in memory, belong to their view/slice/projection, and are cleared when changing series.
+Measurements use millimeters only when pixel spacing is present; otherwise they use pixels. ROI statistics include the pixels whose centers fall inside the outline. User annotations remain in memory for the session and belong to their view, image and projection. Switching to another series and back restores them; **Clear marks** removes them. They are not saved to disk.
+
+To delete one mark, click it or its label with a non-drawing tool (Window, Pan, Zoom or Scroll) and press **Delete**, or right-click it for a delete menu. With nothing selected, **Delete** removes the newest mark on the current image.
 
 Choose **View → Appearance → Modern light / Modern dark / Classic light / Classic dark**. These are independent local copies of RAWDATA_Viewer's JSON palettes, QSS styles and window controls; this viewer does not depend on that project's installation. Modern uses Segoe UI and Classic uses Tahoma. Modern light is the initial default. Existing light/dark preferences migrate to the matching modern preset. The moon button switches light/dark within the current family. Preferences stay in `.lumen-settings.ini`, without registry changes. Switching themes leaves image contrast, colormaps, and exports unchanged.
 
@@ -121,7 +132,8 @@ Compressed image support uses pydicom with GDCM, CharLS, OpenJPEG, and Pillow. T
 | C / D / E / A / T | Crosshair / distance / ellipse / angle / text |
 | Space | Play/pause cine |
 | F / R / I / H / V / ] | Fit / reset / invert / horizontal flip / vertical flip / rotate 90° |
-| Esc / Delete | Cancel drawing / remove last mark on the current slice |
+| Esc / Delete | Cancel drawing / remove the selected mark (or the newest on the current image) |
+| Right-click a mark | Delete it, or all marks on the image |
 | Ctrl+I / Ctrl+S / Ctrl+C | Toggle metadata pane / export PNG / copy image |
 | Ctrl+Shift+S | Export selected DICOM series / NIfTI volume as NIfTI |
 | Ctrl+Shift+R | Reload editable logo, themes and glyphs |

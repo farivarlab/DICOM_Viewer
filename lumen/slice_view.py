@@ -5,20 +5,31 @@ import math
 import numpy as np
 from PySide6.QtCore import Qt, QPointF, QRectF, Signal
 from PySide6.QtGui import QColor, QImage, QPainter, QPen, QPixmap, QTransform
-from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QInputDialog
+from PySide6.QtWidgets import QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QInputDialog, QMenu
 
 from .colors import lookup_table, window_pixels
 from .annotations import file_annotations
 from .colorbar import ColorBar, BAR_WIDTH, append_colorbar
 
 
-@dataclass
+DRAWING_TOOLS = ("Length", "Rectangle", "Ellipse", "Angle", "Arrow", "Text")
+HIT_TOLERANCE = 6.
+
+
+@dataclass(eq=False)  # identity: two identical measurements are still separate marks
 class Mark:
     tool: str
     points: list[QPointF]
     key: tuple
     label: str = ""
     cached_label: str | None = None
+
+
+def _segment_distance(p: QPointF, a: QPointF, b: QPointF) -> float:
+    dx, dy = b.x() - a.x(), b.y() - a.y()
+    length = dx * dx + dy * dy
+    t = 0. if length == 0 else max(0., min(1., ((p.x() - a.x()) * dx + (p.y() - a.y()) * dy) / length))
+    return math.hypot(p.x() - a.x() - t * dx, p.y() - a.y() - t * dy)
 
 
 def angle_degrees(points: list[QPointF], spacing: tuple[float, float]) -> float:
@@ -28,17 +39,23 @@ def angle_degrees(points: list[QPointF], spacing: tuple[float, float]) -> float:
     return float(np.degrees(np.arccos(np.clip(np.dot(u, v) / denominator, -1, 1)))) if denominator else 0
 
 
+def pixel_index(coordinate: float) -> int:
+    """Pixel i is drawn over [i, i + 1) in item coordinates, so its centre is i + 0.5."""
+    return math.floor(coordinate)
+
+
 def roi_statistics(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spacing, precision=".1f"):
     height, width = image.shape[:2]
     x0, x1 = sorted((p.x(), q.x()))
     y0, y1 = sorted((p.y(), q.y()))
-    left, right = max(0, min(width, math.ceil(x0))), max(0, min(width, math.floor(x1) + 1))
-    top, bottom = max(0, min(height, math.ceil(y0))), max(0, min(height, math.floor(y1) + 1))
+    # Include pixels whose centres (i + 0.5) lie inside the drawn outline.
+    left, right = max(0, min(width, math.ceil(x0 - .5))), max(0, min(width, math.floor(x1 - .5) + 1))
+    top, bottom = max(0, min(height, math.ceil(y0 - .5))), max(0, min(height, math.floor(y1 - .5) + 1))
     crop = image[top:bottom, left:right]
     if crop.size == 0:
         return "Empty ROI"
     if ellipse:
-        yy, xx = np.mgrid[top:bottom, left:right]
+        yy, xx = np.mgrid[top:bottom, left:right] + .5
         mask = ((xx - (x0 + x1) / 2) / max(.5, (x1 - x0) / 2)) ** 2 + ((yy - (y0 + y1) / 2) / max(.5, (y1 - y0) / 2)) ** 2 <= 1
         crop = crop[mask]
     if crop.size == 0:
@@ -85,6 +102,9 @@ class SliceView(QGraphicsView):
         self.subtitle = ""
         self.key = ()
         self.marks: list[Mark] = []
+        self.selected: Mark | None = None
+        self._label_boxes: dict[int, QRectF] = {}  # id(mark) -> label rectangle in viewport pixels
+        self._press_pos = None
         self.pending: list[QPointF] = []
         self.preview = None
         self.start_pos = None
@@ -139,6 +159,7 @@ class SliceView(QGraphicsView):
         if key != self.key:
             self.pending.clear()
             self.preview = None
+            self.selected = None
         self.image, self.spacing, self.key = image, spacing, key
         self.width, self.level = width, level
         self.colormap, self.inverted = colormap, inverted
@@ -275,9 +296,12 @@ class SliceView(QGraphicsView):
         self.setFocus()
         if self.image is None:
             return
-        self.start_pos = event.position().toPoint()
+        self.start_pos = self._press_pos = event.position().toPoint()
         self.drag_kind = "Pan" if event.button() == Qt.MouseButton.MiddleButton else (
             "Window" if event.button() == Qt.MouseButton.RightButton else self.tool)
+        if event.button() == Qt.MouseButton.LeftButton and self.tool not in DRAWING_TOOLS:
+            # Drawing tools always start a new mark; other tools pick an existing one.
+            self.selected = self.mark_at(self.start_pos)
         point = self.pixel_at(self.start_pos)
         if self.drag_kind in ("Length", "Rectangle", "Ellipse", "Arrow"):
             self.pending = [point]
@@ -301,7 +325,7 @@ class SliceView(QGraphicsView):
             return
         pos = event.position().toPoint()
         point = self.pixel_at(pos)
-        x, y = int(round(point.x())), int(round(point.y()))
+        x, y = pixel_index(point.x()), pixel_index(point.y())
         if 0 <= y < self.image.shape[0] and 0 <= x < self.image.shape[1]:
             value = self.image[y, x]
             if self.image.ndim == 3:
@@ -340,18 +364,80 @@ class SliceView(QGraphicsView):
                 self.marks.append(Mark(self.drag_kind, [self.pending[0], point], self.key))
             self.pending.clear()
             self.preview = None
-        self.start_pos, self.drag_kind = None, None
+        release = event.position().toPoint()
+        clicked = self._press_pos is not None and (release - self._press_pos).manhattanLength() <= 3
+        self.start_pos, self.drag_kind, self._press_pos = None, None, None
+        if event.button() == Qt.MouseButton.RightButton and clicked:
+            mark = self.mark_at(release)
+            if mark is not None:
+                self.selected = mark
+                self.viewport().update()
+                self.mark_menu(mark).exec(event.globalPosition().toPoint())
+        self.viewport().update()
+
+    def visible_marks(self) -> list[Mark]:
+        return [mark for mark in self.marks if mark.key == self.key]
+
+    def mark_at(self, pos, tolerance=HIT_TOLERANCE) -> Mark | None:
+        """The topmost mark on this image whose outline or label is under *pos* (viewport pixels)."""
+        p = QPointF(pos)
+        for mark in reversed(self.visible_marks()):
+            box = self._label_boxes.get(id(mark))
+            if box is not None and box.contains(p):
+                return mark
+            points = [QPointF(self.screen_at(q)) for q in mark.points]
+            if mark.tool == "Text":
+                hit = math.hypot(p.x() - points[0].x(), p.y() - points[0].y()) <= tolerance * 2
+            elif mark.tool in ("Rectangle", "Ellipse") and len(points) >= 2:
+                rect = QRectF(points[0], points[-1]).normalized()
+                if mark.tool == "Rectangle":
+                    outer = rect.adjusted(-tolerance, -tolerance, tolerance, tolerance)
+                    inner = rect.adjusted(tolerance, tolerance, -tolerance, -tolerance)
+                    hit = outer.contains(p) and not (inner.isValid() and inner.contains(p))
+                else:
+                    a, b = max(.5, rect.width() / 2), max(.5, rect.height() / 2)
+                    radius = math.hypot((p.x() - rect.center().x()) / a, (p.y() - rect.center().y()) / b)
+                    hit = abs(radius - 1) * min(a, b) <= tolerance
+            else:
+                hit = any(_segment_distance(p, a, b) <= tolerance for a, b in zip(points, points[1:]))
+            if hit:
+                return mark
+        return None
+
+    def delete_mark(self, mark: Mark | None = None) -> bool:
+        """Remove *mark*, else the selected mark, else the newest mark on this image."""
+        visible = self.visible_marks()
+        target = mark if mark is not None else (self.selected if self.selected in visible else None)
+        if target is None and visible:
+            target = visible[-1]
+        if target is None or target not in self.marks:
+            return False
+        self.marks.remove(target)
+        self._label_boxes.pop(id(target), None)
+        if self.selected is target:
+            self.selected = None
+        self.viewport().update()
+        return True
+
+    def mark_menu(self, mark: Mark) -> QMenu:
+        menu = QMenu(self)
+        noun = {"Text": "annotation", "Arrow": "arrow"}.get(mark.tool, "measurement")
+        menu.addAction(f"Delete {noun}", lambda: self.delete_mark(mark))
+        menu.addAction("Delete all marks on this image", self.clear_image_marks)
+        return menu
+
+    def clear_image_marks(self):
+        self.marks = [mark for mark in self.marks if mark.key != self.key]
+        self.selected = None
         self.viewport().update()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
             self.pending.clear()
             self.preview = None
+            self.selected = None
         elif event.key() in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-            for i in range(len(self.marks) - 1, -1, -1):
-                if self.marks[i].key == self.key:
-                    self.marks.pop(i)
-                    break
+            self.delete_mark()
         elif event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down, Qt.Key.Key_PageUp, Qt.Key.Key_PageDown,
                              Qt.Key.Key_Home, Qt.Key.Key_End):
             steps = {Qt.Key.Key_Up: -1, Qt.Key.Key_Down: 1, Qt.Key.Key_PageUp: -10,
@@ -406,7 +492,7 @@ class SliceView(QGraphicsView):
             painter.end()
             return
         if self.crosshair is not None and self.show_crosshair:
-            point = self.screen_at(QPointF(*self.crosshair))
+            point = self.screen_at(QPointF(self.crosshair[0] + .5, self.crosshair[1] + .5))  # pixel centre
             painter.setPen(QPen(QColor(accent), 1, Qt.PenStyle.DashLine))
             painter.drawLine(point.x(), 55, point.x(), h - 35)
             painter.drawLine(45, point.y(), w - 45, point.y())
@@ -439,11 +525,15 @@ class SliceView(QGraphicsView):
         painter.restore()
 
     def _draw_marks(self, painter, map_point, include_pending=False):
-        marks = [m for m in self.marks if m.key == self.key]
-        if include_pending and self.pending and self.preview:
-            marks.append(Mark(self.tool, self.pending + [self.preview], self.key))
-        painter.setPen(QPen(QColor("#f5d48b"), 1.6))
+        marks = self.visible_marks()
+        if include_pending:  # on-screen painting, not export
+            self._label_boxes = {}
+            if self.pending and self.preview:
+                marks.append(Mark(self.tool, self.pending + [self.preview], self.key))
+        normal, highlight = QPen(QColor("#f5d48b"), 1.6), QPen(QColor("#7ec8e3"), 2.4)
         for mark in marks:
+            # Selection is an on-screen cue only; exports always use the normal color.
+            painter.setPen(highlight if include_pending and mark is self.selected else normal)
             points = [map_point(p) for p in mark.points]
             text = mark.label
             if mark.tool == "Text":
@@ -482,6 +572,8 @@ class SliceView(QGraphicsView):
                 x = max(bounds.left() + 2, min(anchor.x() + 8, bounds.right() - width - 2))
                 y = max(bounds.top() + 2, min(anchor.y() + 4, bounds.bottom() - height - 2))
                 box = QRectF(x, y, width, height)
+                if include_pending:
+                    self._label_boxes[id(mark)] = box
                 painter.fillRect(box, QColor(5, 10, 16, 210))
                 painter.drawText(box.adjusted(5, 0, 0, 0), Qt.AlignmentFlag.AlignVCenter, text)
 

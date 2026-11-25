@@ -4,11 +4,9 @@ import argparse
 from pathlib import Path
 import sys
 import traceback
-import threading
-import time
 
 import numpy as np
-from PySide6.QtCore import Qt, QObject, QRunnable, QThreadPool, Signal, QTimer, QSize, QUrl
+from PySide6.QtCore import Qt, QThreadPool, QTimer, QSize, QUrl
 from PySide6.QtGui import QAction, QActionGroup, QKeySequence, QDesktopServices
 from PySide6.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QGridLayout,
@@ -21,6 +19,7 @@ from PySide6.QtWidgets import (
 from . import __version__
 from .colors import STOPS
 from .importer import import_paths
+from .jobs import Job
 from .icons import icon, ACTION_ICONS, retheme_icon, clear_icon_cache
 from .model import ImageVolume, load_series, demo_volume
 from .slice_view import SliceView
@@ -40,55 +39,7 @@ from .caption_icons import clear_glyph_cache
 
 PRESETS = {"Soft tissue": (400, 40), "Lung": (1500, -600), "Bone": (2000, 400),
            "Brain": (80, 40), "Abdomen": (350, 50), "Angiography": (700, 200)}
-
-
-class JobSignals(QObject):
-    finished = Signal(object)
-    failed = Signal(str)
-    progress = Signal(str)
-    cancelled = Signal()
-
-
-class JobCancelled(Exception):
-    pass
-
-
-class Job(QRunnable):
-    def __init__(self, function, discard_on_cancel=True):
-        super().__init__()
-        self.function = function
-        self.signals = JobSignals()
-        self.cancel_event = threading.Event()
-        self.last_progress = 0.
-        self.discard_on_cancel = discard_on_cancel
-
-    def progress(self, message):
-        if self.cancel_event.is_set():
-            raise JobCancelled()
-        now = time.monotonic()
-        if now - self.last_progress >= .08:
-            self.signals.progress.emit(message)
-            self.last_progress = now
-
-    @staticmethod
-    def discard(result):
-        if isinstance(result, tuple) and len(result) == 2 and isinstance(result[1], list):
-            for temporary in result[1]:
-                if hasattr(temporary, "cleanup"):
-                    temporary.cleanup()
-
-    def run(self):
-        try:
-            result = self.function(self.progress)
-            if self.cancel_event.is_set() and self.discard_on_cancel:
-                self.discard(result)
-                raise JobCancelled()
-            self.signals.finished.emit(result)
-        except JobCancelled:
-            self.signals.cancelled.emit()
-        except Exception as exc:
-            traceback.print_exc()
-            self.signals.failed.emit(str(exc))
+PLANE_AXIS = {"Axial": 2, "Coronal": 1, "Sagittal": 0}  # index into the (x, y, z) cursor
 
 
 def label(text, name=None, wrap=False):
@@ -124,6 +75,7 @@ class MainWindow(QMainWindow):
         self.busy = False
         self._closing = False
         self._plane_cache = {}
+        self._saved_marks: dict[str, tuple[tuple, dict[str, list]]] = {}  # series UID -> (frames, view -> marks)
         self._inversion_override = None
         self.cursor = [0, 0, 0]
         self.source_index = 0
@@ -307,6 +259,12 @@ class MainWindow(QMainWindow):
         self.tool_bar.addAction(self.clear_action)
 
     def _create_workspace(self):
+        self._create_browser_dock()
+        self._create_canvas()
+        self._create_display_dock()
+        self.resizeDocks([self.browser_dock, self.display_dock], [260, 240], Qt.Orientation.Horizontal)
+
+    def _create_browser_dock(self):
         sidebar = QWidget()
         sidebar.setMinimumWidth(235)
         side = QVBoxLayout(sidebar)
@@ -332,6 +290,7 @@ class MainWindow(QMainWindow):
         self.browser_dock.setWidget(sidebar)
         self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self.browser_dock)
 
+    def _create_canvas(self):
         center = QWidget()
         center_layout = QVBoxLayout(center)
         center_layout.setContentsMargins(0, 0, 0, 0)
@@ -340,6 +299,57 @@ class MainWindow(QMainWindow):
         center_layout.addWidget(self.study_title)
         self.pages = QStackedWidget()
         center_layout.addWidget(self.pages, 1)
+        self.pages.addWidget(self._create_welcome_page())
+        self.canvas = QWidget()
+        self.grid = QGridLayout(self.canvas)
+        self.grid.setContentsMargins(3, 3, 3, 3)
+        self.grid.setSpacing(3)
+        self.views = {name: SliceView(name) for name in ("Source", "Axial", "Coronal", "Sagittal")}
+        for view in self.views.values():
+            self.grid.addWidget(view)
+            view.hide()
+            view.activated.connect(self.activate_view)
+            view.scrolled.connect(self.scroll_slice)
+            view.window_changed.connect(self.change_window)
+            view.cursor_changed.connect(self.move_crosshair)
+            view.probed.connect(self.statusBar().showMessage)
+        self.active_view = self.views["Source"]
+        self.active_view.title = "2D image"
+        self.active_view.active = True
+        self.volume_view = VolumeView()
+        self.grid.addWidget(self.volume_view)
+        self.volume_view.hide()
+        self.pages.addWidget(self.canvas)
+        center_layout.addWidget(self._create_navigation())
+        self.setCentralWidget(center)
+
+    def _create_display_dock(self):
+        inspector_scroll = QScrollArea()
+        inspector_scroll.setWidgetResizable(True)
+        inspector_scroll.setMinimumWidth(235)
+        inspector = QWidget()
+        inspector_scroll.setWidget(inspector)
+        settings = QVBoxLayout(inspector)
+        settings.setContentsMargins(10, 6, 10, 10)
+        settings.addWidget(self._create_display_controls())
+        settings.addWidget(self._create_mpr_controls())
+        settings.addWidget(self._create_volume_controls())
+        self.control_hint = label("", "muted", True)
+        settings.addSpacing(12)
+        settings.addWidget(self.control_hint)
+        help_button = QPushButton("Keyboard controls")
+        help_button.setIcon(icon("help"))
+        help_button.clicked.connect(self.show_help)
+        settings.addWidget(help_button)
+        settings.addStretch()
+        self.inspector = inspector
+        self.display_dock = QDockWidget("Display", self)
+        self.display_dock.setObjectName("displayDock")
+        self.display_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.display_dock.setWidget(inspector_scroll)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.display_dock)
+
+    def _create_welcome_page(self):
         welcome = QWidget()
         welcome.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
         wl = QVBoxLayout(welcome)
@@ -364,27 +374,9 @@ class MainWindow(QMainWindow):
         buttons.addStretch()
         wl.addLayout(buttons)
         wl.addStretch()
-        self.pages.addWidget(welcome)
-        self.canvas = QWidget()
-        self.grid = QGridLayout(self.canvas)
-        self.grid.setContentsMargins(3, 3, 3, 3)
-        self.grid.setSpacing(3)
-        self.views = {name: SliceView(name) for name in ("Source", "Axial", "Coronal", "Sagittal")}
-        for view in self.views.values():
-            self.grid.addWidget(view)
-            view.hide()
-            view.activated.connect(self.activate_view)
-            view.scrolled.connect(self.scroll_slice)
-            view.window_changed.connect(self.change_window)
-            view.cursor_changed.connect(self.move_crosshair)
-            view.probed.connect(self.statusBar().showMessage)
-        self.active_view = self.views["Source"]
-        self.active_view.title = "2D image"
-        self.active_view.active = True
-        self.volume_view = VolumeView()
-        self.grid.addWidget(self.volume_view)
-        self.volume_view.hide()
-        self.pages.addWidget(self.canvas)
+        return welcome
+
+    def _create_navigation(self):
         self.navigation = QWidget()
         nav = QHBoxLayout(self.navigation)
         nav.setContentsMargins(12, 8, 12, 10)
@@ -420,16 +412,9 @@ class MainWindow(QMainWindow):
         self.slice_label = label("—", "muted")
         self.slice_label.setMinimumWidth(44)
         nav.addWidget(self.slice_label)
-        center_layout.addWidget(self.navigation)
-        self.setCentralWidget(center)
+        return self.navigation
 
-        inspector_scroll = QScrollArea()
-        inspector_scroll.setWidgetResizable(True)
-        inspector_scroll.setMinimumWidth(235)
-        inspector = QWidget()
-        inspector_scroll.setWidget(inspector)
-        settings = QVBoxLayout(inspector)
-        settings.setContentsMargins(10, 6, 10, 10)
+    def _create_display_controls(self):
         self.display_controls = QWidget()
         display_settings = QVBoxLayout(self.display_controls)
         display_settings.setContentsMargins(0, 0, 0, 0)
@@ -468,7 +453,9 @@ class MainWindow(QMainWindow):
         self.embedded_overlays.setChecked(True)
         self.embedded_overlays.toggled.connect(self.update_overlays)
         display_settings.addWidget(self.embedded_overlays)
-        settings.addWidget(self.display_controls)
+        return self.display_controls
+
+    def _create_mpr_controls(self):
         self.mpr_controls = QWidget()
         mpr_settings = QVBoxLayout(self.mpr_controls)
         mpr_settings.setContentsMargins(0, 0, 0, 0)
@@ -491,8 +478,10 @@ class MainWindow(QMainWindow):
         mpr_settings.addLayout(mpr_form)
         self.position_label = label("LPS coordinates\n—", "muted", True)
         mpr_settings.addWidget(self.position_label)
-        settings.addWidget(self.mpr_controls)
         self.mpr_controls.hide()
+        return self.mpr_controls
+
+    def _create_volume_controls(self):
         self.volume_controls = QWidget()
         volume_settings = QVBoxLayout(self.volume_controls)
         volume_settings.setContentsMargins(0, 0, 0, 0)
@@ -526,23 +515,8 @@ class MainWindow(QMainWindow):
         reset_3d.setIcon(icon("camera"))
         reset_3d.clicked.connect(self.volume_view.reset_camera)
         volume_settings.addWidget(reset_3d)
-        settings.addWidget(self.volume_controls)
         self.volume_controls.hide()
-        self.control_hint = label("", "muted", True)
-        settings.addSpacing(12)
-        settings.addWidget(self.control_hint)
-        help_button = QPushButton("Keyboard controls")
-        help_button.setIcon(icon("help"))
-        help_button.clicked.connect(self.show_help)
-        settings.addWidget(help_button)
-        settings.addStretch()
-        self.inspector = inspector
-        self.display_dock = QDockWidget("Display", self)
-        self.display_dock.setObjectName("displayDock")
-        self.display_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
-        self.display_dock.setWidget(inspector_scroll)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self.display_dock)
-        self.resizeDocks([self.browser_dock, self.display_dock], [260, 240], Qt.Orientation.Horizontal)
+        return self.volume_controls
 
     def _create_metadata(self):
         self.metadata_pane = MetadataPane()
@@ -765,7 +739,26 @@ class MainWindow(QMainWindow):
             self.mode_combo.setCurrentText("2D stack")
             self.reset_views()
 
+    def _store_marks(self):
+        """Keep the open series' measurements so returning to it restores them."""
+        if self.data is None:
+            return
+        saved = {name: list(view.marks) for name, view in self.views.items() if view.marks}
+        if saved:
+            self._saved_marks[self.data.series.uid] = (tuple(self.data.references), saved)
+        else:
+            self._saved_marks.pop(self.data.series.uid, None)
+
+    def _restored_marks(self, data):
+        frames, saved = self._saved_marks.get(data.series.uid, ((), {}))
+        if frames != tuple(data.references):
+            # Reconstructed-plane indices depend on the exact frame set; source marks don't.
+            saved = {name: marks for name, marks in saved.items() if name == "Source"}
+        return saved
+
     def set_data(self, data, target=None):
+        self._store_marks()
+        restored = self._restored_marks(data)
         self.data = data
         is_dicom = data.series.source_format == "DICOM"
         self.tags_action.setText("DICOM tags" if is_dicom else "NIfTI metadata")
@@ -783,8 +776,9 @@ class MainWindow(QMainWindow):
         self.browser.set_loaded(data)
         self.filter_series(self.search.text())
         self.cursor = [int(n // 2) for n in data.canonical.shape[::-1]] if data.mpr_ready else [0, 0, 0]
-        for view in self.views.values():
-            view.marks.clear()
+        for name, view in self.views.items():
+            view.marks = list(restored.get(name, ()))
+            view.selected = None
             view.pending.clear()
             view._needs_fit = True
             view._render_key = None
@@ -908,9 +902,30 @@ class MainWindow(QMainWindow):
             self.active_view.fit_image()
 
     def refresh_views(self):
+        """Push the current image, window and overlays to every visible pane."""
         data = self.data
         if data is None:
             return
+        self._sync_default_window()
+        width, level = self.width_spin.value(), self.level_spin.value()
+        for name, view in self.views.items():
+            if not view.isVisible():
+                continue
+            if name == "Source":
+                self._show_source(view, width, level)
+            elif data.mpr_ready:
+                self._show_plane(name, view, width, level)
+        self._update_side_labels()
+        self.update_navigation()
+        if self.mode == "2D stack":
+            self.browser.sync_image(self.source_index)
+        self.update_metadata()
+        if not self.busy:
+            self.update_control_state()
+
+    def _sync_default_window(self):
+        """Follow each file's own window/inversion defaults until the user overrides them."""
+        data = self.data
         if self.mode == "2D stack" and self.preset.currentIndex() == 0:
             for widget, value in zip((self.width_spin, self.level_spin), data.frame_window(self.source_index)):
                 widget.blockSignals(True)
@@ -918,62 +933,62 @@ class MainWindow(QMainWindow):
                 widget.blockSignals(False)
         if self._inversion_override is None:
             self.invert_action.setChecked(data.frame_inverted(self.source_index) if self.mode == "2D stack" else data.inverted)
-        width, level = self.width_spin.value(), self.level_spin.value()
-        for name, view in self.views.items():
-            if not view.isVisible():
-                continue
-            if name != "Source" and not data.mpr_ready:
-                continue
-            position = self.source_index if name == "Source" else self.cursor[{"Axial": 2, "Coronal": 1, "Sagittal": 0}[name]]
-            plane_key = (id(data), position, self.slab_mode.currentText(), self.slab_mm.value())
-            if name not in self._plane_cache or self._plane_cache[name][0] != plane_key:
-                self._plane_cache[name] = (plane_key, data.plane(name, self.cursor, self.source_index,
-                    self.slab_mode.currentText(), self.slab_mm.value()))
-            image, spacing = self._plane_cache[name][1]
-            crosshair, directions = None, None
-            if name == "Source":
-                index, total = self.source_index, len(data.source)
-                header = data.header(index)
-                ref = data.reference(index)
-                orientation = functional(header, ref.frame, "PlaneOrientationSequence", "ImageOrientationPatient")
-                if orientation is not None:
-                    directions = (orientation[:3], orientation[3:])
-            else:
-                x, y, z = self.cursor
-                nz, ny, nx = data.canonical.shape
-                index, total = {"Axial": (z, nz), "Coronal": (y, ny), "Sagittal": (x, nx)}[name]
-                crosshair = {"Axial": (x, y), "Coronal": (x, nz - 1 - z), "Sagittal": (y, nz - 1 - z)}[name]
-                directions = {"Axial": ((1, 0, 0), (0, 1, 0)), "Coronal": ((1, 0, 0), (0, 0, -1)),
-                              "Sagittal": ((0, 1, 0), (0, 0, -1))}[name]
-            key = (name, index, self.slab_mode.currentText(), self.slab_mm.value()) if name != "Source" else (name, index)
-            view.set_image(image, spacing, key, width, level, self.cmap.currentText(), self.invert_action.isChecked(),
-                data.frame_calibrated(index) if name == "Source" else True,
-                f"{index + 1} / {total}   ·   {self.slab_mode.currentText() if name != 'Source' else 'Reconstruction'}",
-                crosshair, directions, data.frame_units(index) if name == "Source" else data.units,
-                spatial_unit=data.geometry_unit if data.series.source_format != "DICOM" else None,
-                dicom_window=data.series.source_format == "DICOM")
-            # Reconstructed planes do not represent one acquired instance.
-            view.set_file_annotations(data.header(self.source_index) if name == "Source" else data.dataset,
-                data.overlay_layers(self.source_index) if name == "Source" else (), reconstruction=name != "Source")
-            if name == "Source":
-                ref = data.reference(index)
-                filename = ref.path.name if ref.path else "Demo image"
-                view.subtitle = f"{index + 1} / {total} · {filename}" + (f" · frame {ref.frame + 1}" if ref.frame else "")
+
+    def _cached_plane(self, name, cache_key):
+        if name not in self._plane_cache or self._plane_cache[name][0] != cache_key:
+            self._plane_cache[name] = (cache_key, self.data.plane(name, self.cursor, self.source_index,
+                                                                  self.slab_mode.currentText(), self.slab_mm.value()))
+        return self._plane_cache[name][1]
+
+    def _display_options(self):
+        data = self.data
+        return dict(spatial_unit=data.geometry_unit if data.series.source_format != "DICOM" else None,
+                    dicom_window=data.series.source_format == "DICOM")
+
+    def _show_source(self, view, width, level):
+        data, index = self.data, self.source_index
+        image, spacing = self._cached_plane("Source", (id(data), index))
+        ref = data.reference(index)
+        orientation = functional(data.header(index), ref.frame, "PlaneOrientationSequence", "ImageOrientationPatient")
+        directions = (orientation[:3], orientation[3:]) if orientation is not None else None
+        filename = ref.path.name if ref.path else "Demo image"
+        subtitle = f"{index + 1} / {len(data.source)} · {filename}" + (f" · frame {ref.frame + 1}" if ref.frame else "")
+        # Source marks follow the acquired file/frame, so they survive re-indexing
+        # when more files of the same series are imported later.
+        key = ("Source", ref.path, ref.frame)
+        view.set_image(image, spacing, key, width, level, self.cmap.currentText(), self.invert_action.isChecked(),
+                       data.frame_calibrated(index), subtitle, None, directions, data.frame_units(index),
+                       **self._display_options())
+        view.set_file_annotations(data.header(index), data.overlay_layers(index))
+
+    def _show_plane(self, name, view, width, level):
+        data = self.data
+        slab, slab_mm = self.slab_mode.currentText(), self.slab_mm.value()
+        x, y, z = self.cursor
+        nz, ny, nx = data.canonical.shape
+        index, total = {"Axial": (z, nz), "Coronal": (y, ny), "Sagittal": (x, nx)}[name]
+        image, spacing = self._cached_plane(name, (id(data), index, slab, slab_mm))
+        crosshair = {"Axial": (x, y), "Coronal": (x, nz - 1 - z), "Sagittal": (y, nz - 1 - z)}[name]
+        directions = {"Axial": ((1, 0, 0), (0, 1, 0)), "Coronal": ((1, 0, 0), (0, 0, -1)),
+                      "Sagittal": ((0, 1, 0), (0, 0, -1))}[name]
+        view.set_image(image, spacing, (name, index, slab, slab_mm), width, level, self.cmap.currentText(),
+                       self.invert_action.isChecked(), True, f"{index + 1} / {total}   ·   {slab}",
+                       crosshair, directions, data.units, **self._display_options())
+        # Reconstructed planes do not represent one acquired instance.
+        view.set_file_annotations(data.dataset, (), reconstruction=True)
+
+    def _update_side_labels(self):
+        data = self.data
         if self.mode == "2D stack":
             sx, sy = data.frame_spacing(self.source_index)
-            spacing_text = f"{sx:.2f} × {sy:.2f} {data.geometry_unit}" if data.frame_calibrated(self.source_index) or data.series.source_format != "DICOM" else "uncalibrated pixels"
+            calibrated = data.frame_calibrated(self.source_index) or data.series.source_format != "DICOM"
+            spacing_text = f"{sx:.2f} × {sy:.2f} {data.geometry_unit}" if calibrated else "uncalibrated pixels"
             self.acquisition.setText(f"{data.series.modality} · {data.source.shape[2]} × {data.source.shape[1]}\n{spacing_text}")
         if data.mpr_ready:
             point = np.asarray(data.canonical_origin) + np.asarray(self.cursor) * data.canonical_spacing
             self.position_label.setText(f"LPS · {data.geometry_unit}\nL {point[0]:.1f}   P {point[1]:.1f}   S {point[2]:.1f}")
         else:
             self.position_label.setText("Patient coordinates unavailable")
-        self.update_navigation()
-        if self.mode == "2D stack":
-            self.browser.sync_image(self.source_index)
-        self.update_metadata()
-        if not self.busy:
-            self.update_control_state()
 
     def update_navigation(self):
         if self.data is None:
@@ -982,7 +997,7 @@ class MainWindow(QMainWindow):
         if plane == "Source":
             index, count = self.source_index, len(self.data.source)
         elif self.data.mpr_ready:
-            axis = {"Axial": 2, "Coronal": 1, "Sagittal": 0}[plane]
+            axis = PLANE_AXIS[plane]
             index, count = self.cursor[axis], self.data.canonical.shape[2 - axis]
         else:
             return
@@ -1005,7 +1020,7 @@ class MainWindow(QMainWindow):
         if self.active_view.plane == "Source":
             self.source_index = value
         else:
-            self.cursor[{"Axial": 2, "Coronal": 1, "Sagittal": 0}[self.active_view.plane]] = value
+            self.cursor[PLANE_AXIS[self.active_view.plane]] = value
         self.refresh_views()
 
     def scroll_slice(self, plane, steps):
@@ -1041,8 +1056,14 @@ class MainWindow(QMainWindow):
             image = self.active_view.image
             if image is None:
                 image = self.data.source[self.source_index]
-            lo, hi = np.percentile(image, (1, 99))
-            width, level = max(self.data.window_minimum, hi - lo), (lo + hi) / 2
+            finite = np.asarray(image)[np.isfinite(image)]  # NIfTI maps often use NaN backgrounds
+            if finite.size == 0:
+                self.statusBar().showMessage("Auto contrast needs at least one finite pixel value")
+                return
+            lo, hi = np.percentile(finite, (1, 99))
+            if hi <= lo:
+                lo, hi = finite.min(), finite.max()
+            width, level = max(self.data.window_minimum, float(hi - lo)), float(lo + hi) / 2
         else:
             width, level = PRESETS[preset]
         self.change_window(width, level, from_preset=True)
@@ -1094,8 +1115,11 @@ class MainWindow(QMainWindow):
         self.volume_view.reset_camera()
 
     def clear_marks(self):
+        if self.data is not None:
+            self._saved_marks.pop(self.data.series.uid, None)
         for view in self.views.values():
             view.marks.clear()
+            view.selected = None
             view.pending.clear()
             view.preview = None
             view.viewport().update()
@@ -1269,7 +1293,9 @@ class MainWindow(QMainWindow):
             "C: linked crosshair · D: distance · E: ellipse ROI\n"
             "A: three-point angle · T: text\n"
             "R: reset · F: fit · I: invert · H/V: flip · ]: rotate\n"
-            "Space: cine · Delete: remove last mark · Esc: cancel drawing\n"
+            "Space: cine · Esc: cancel drawing\n"
+            "Click a mark (with a non-drawing tool) to select it; Delete removes the\n"
+            "selected mark, or the newest one. Right-click a mark for a delete menu.\n"
             "Ctrl+I: metadata · Ctrl+S: save PNG · Ctrl+C: copy view\n"
             "Ctrl+Shift+S: export selected series / volume as NIfTI\n"
             "View → Appearance: choose modern or classic light/dark.\n"

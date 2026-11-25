@@ -10,6 +10,7 @@ import hashlib
 import importlib.metadata as metadata
 import json
 from pathlib import Path
+import re
 import shutil
 import sys
 
@@ -19,7 +20,33 @@ RUNTIME_DISTRIBUTIONS = (
     "pylibjpeg", "pylibjpeg-openjpeg", "python-gdcm", "pyjpegls", "Pillow", "nibabel", "dcm2niix",
 )
 NOTICE_WORDS = ("license", "licence", "copying", "copyright", "notice", "authors")
+# Whole filename tokens only: "LICENSE_DOP" and "LicenseRef-Qt" are notices,
+# "licensewizard.pro" (a Qt example) and "licenseRule.json" (tooling) are not.
+NOTICE_TOKENS = frozenset(NOTICE_WORDS) | {"licenses", "licences", "licenseref", "notices"}
+NON_NOTICE_SUFFIXES = frozenset({
+    ".dll", ".pyd", ".exe", ".lib", ".pyc", ".py", ".h", ".c", ".cpp",
+    ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pro", ".qrc", ".qdoc", ".ui",
+})
 VENDORED = Path(__file__).resolve().parent / "licenses"
+
+
+def is_notice_file(relative: Path) -> bool:
+    """True for license/copyright/attribution texts, false for code, images and examples."""
+    relative = Path(relative)
+    if relative.suffix.casefold() in NON_NOTICE_SUFFIXES:
+        return False
+    if relative.name == "qt_attribution.json":
+        return True
+    if any(part.casefold() in ("licenses", "licences") for part in relative.parts[:-1]):
+        return True  # SPDX-style folders name files by license id, e.g. LICENSES/MIT.txt
+    tokens = re.split(r"[^a-z]+", relative.name.casefold())
+    return any(token in NOTICE_TOKENS for token in tokens)
+
+
+def _spdx_text(relative: Path) -> bool:
+    """A license text named by its SPDX id outside a LICENSES folder, e.g. LGPL-2.1-or-later.txt."""
+    return relative.suffix.casefold() in ("", ".txt", ".md") and bool(
+        re.fullmatch(r"(A?L?GPL|MPL|Apache|BSD|MIT|CC0|BSL|AFL|HPND)-[\w.+-]+", relative.stem))
 
 
 def _sha256(path: Path) -> str:
@@ -56,10 +83,10 @@ def generate_notices(target: Path) -> None:
             relative = Path(entry)
             if relative.is_absolute() or ".." in relative.parts:
                 continue
-            if not any(word in relative.name.casefold() for word in NOTICE_WORDS):
+            if not is_notice_file(relative):
                 continue
             source = Path(dist.locate_file(entry))
-            if not source.is_file() or source.suffix.casefold() in {".dll", ".pyd", ".exe", ".lib", ".pyc", ".py", ".h", ".c", ".cpp"}:
+            if not source.is_file():
                 continue
             destination = package_dir / relative
             destination.parent.mkdir(parents=True, exist_ok=True)
@@ -107,6 +134,8 @@ def generate_notices(target: Path) -> None:
         relative = Path(entry["local_file"])
         if relative.is_absolute() or ".." in relative.parts:
             raise RuntimeError("Invalid vendored notice path")
+        if not is_notice_file(relative) and not _spdx_text(relative):
+            raise RuntimeError(f"Vendored file is not a license or attribution notice: {relative}")
         source = VENDORED / relative
         if not source.is_file() or _sha256(source) != entry["sha256"]:
             raise RuntimeError(f"Vendored notice is missing or changed: {relative}")

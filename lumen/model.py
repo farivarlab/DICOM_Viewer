@@ -32,6 +32,14 @@ def first_number(value, fallback: float) -> float:
         return fallback
 
 
+def frame_count(ds: Dataset) -> int:
+    """NumberOfFrames, treating a missing or empty value as a single frame."""
+    value = getattr(ds, "NumberOfFrames", None)
+    if value in (None, ""):
+        return 1
+    return int(value)  # a malformed non-empty value is reported, not silently guessed
+
+
 def functional(ds: Dataset, frame: int, sequence: str, attribute: str, default=None):
     for group, index in ((getattr(ds, "PerFrameFunctionalGroupsSequence", []), frame),
                          (getattr(ds, "SharedFunctionalGroupsSequence", []), 0)):
@@ -178,7 +186,7 @@ def scan_paths(paths: list[Path], progress: Progress = lambda _: None) -> ScanRe
                 except (AttributeError, TypeError, ValueError, OverflowError):
                     pass
             groups[uid].paths.append(path)
-            count = int(getattr(ds, "NumberOfFrames", 1))
+            count = frame_count(ds)
             groups[uid].frames += count
             groups[uid].files[path] = FileInfo(path, count, int(first_number(getattr(ds, "InstanceNumber", 0), 0)))
         except (OSError, ValueError, EOFError, AttributeError, TypeError):
@@ -319,7 +327,7 @@ class ImageVolume:
     def pixel_to_cursor(self, plane: str, u: float, v: float, cursor: list[int]) -> list[int]:
         result = cursor.copy()
         nz, ny, nx = self.canonical.shape
-        u, v = int(round(u)), int(round(v))
+        u, v = math.floor(u), math.floor(v)  # pixel i covers [i, i + 1) on screen
         if plane == "Axial":
             result[0], result[1] = np.clip(u, 0, nx - 1), np.clip(v, 0, ny - 1)
         elif plane == "Coronal":
@@ -384,7 +392,7 @@ def load_series(series: Series, progress: Progress = lambda _: None, reconstruct
             aliases[path] = seen[uid]
             continue
         seen[uid] = path
-        count = int(getattr(ds, "NumberOfFrames", 1))
+        count = frame_count(ds)
         if count < 1 or int(ds.Rows) < 1 or int(ds.Columns) < 1:
             raise ValueError(f"{path.name} declares invalid image dimensions or frame count.")
         estimated += int(ds.Rows) * int(ds.Columns) * count * int(getattr(ds, "SamplesPerPixel", 1))

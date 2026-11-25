@@ -7,7 +7,7 @@
       "ref": "v6.12.0",
       "archive_url": "https://codeload.github.com/qt/qtbase/tar.gz/refs/tags/v6.12.0",
       "archive_sha256": "dff6570582c272cbe744d2e460700318262af505460f4215276459970ae31b46",
-      "notice_files": 179,
+      "notice_files": 170,
       "unresolved_attribution_references": []
     },
     {
@@ -16,7 +16,7 @@
       "ref": "v6.12.0",
       "archive_url": "https://codeload.github.com/qt/qtsvg/tar.gz/refs/tags/v6.12.0",
       "archive_sha256": "38d440c4e97c90ce4f5b76c65dcd63d716d2ef4852baa6fb0926fb94bb96ea66",
-      "notice_files": 9,
+      "notice_files": 8,
       "unresolved_attribution_references": []
     },
     {
@@ -365,46 +365,6 @@
       "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/cmake/3rdparty/kwin/qt_attribution.json",
       "local_file": "QtBase/cmake/3rdparty/kwin/qt_attribution.json",
       "sha256": "bf3a3c09e99f1c9fab7553ebc4a7548b71dc23fcfdbe6e5df0fa0e7847c2efc3"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
-      "source_file": "doc/src/images/licensewizard-example.png",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/doc/src/images/licensewizard-example.png",
-      "local_file": "QtBase/doc/src/images/licensewizard-example.png",
-      "sha256": "b58d613534d4c50598862342d5c2f96234ce0fda8972b80c9ba2e3b4b6b282c3"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
-      "source_file": "examples/widgets/dialogs/licensewizard/licensewizard.pro",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/examples/widgets/dialogs/licensewizard/licensewizard.pro",
-      "local_file": "QtBase/examples/widgets/dialogs/licensewizard/licensewizard.pro",
-      "sha256": "42668d006d6ee28ed66ba3910cf1d106480631ddc24ef5aee665b982084ccf8a"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
-      "source_file": "examples/widgets/dialogs/licensewizard/licensewizard.qrc",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/examples/widgets/dialogs/licensewizard/licensewizard.qrc",
-      "local_file": "QtBase/examples/widgets/dialogs/licensewizard/licensewizard.qrc",
-      "sha256": "7d26a009bc3ad6aa90de263b4bc4b35a54296745629f0a13b35fbd8e1d96d0f3"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
-      "source_file": "examples/widgets/doc/src/licensewizard.qdoc",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/examples/widgets/doc/src/licensewizard.qdoc",
-      "local_file": "QtBase/examples/widgets/doc/src/licensewizard.qdoc",
-      "sha256": "6d510597808cd180b2eb95771b5c10736017756631c566d405f97cc6a034fbe7"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
-      "source_file": "licenseRule.json",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/licenseRule.json",
-      "local_file": "QtBase/licenseRule.json",
-      "sha256": "e9bb0e0c6c7257c682e3407a14a580dfa6d85b9986717b16585cf673f521125f"
     },
     {
       "component": "QtBase",
@@ -1273,14 +1233,6 @@
     {
       "component": "QtBase",
       "ref": "v6.12.0",
-      "source_file": "src/gui/vulkan/licenseheader.h.in",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/src/gui/vulkan/licenseheader.h.in",
-      "local_file": "QtBase/src/gui/vulkan/licenseheader.h.in",
-      "sha256": "6975a5d3dd6bb9e5fa9058f5d8739b68ca7d635fcfae8bec21949ec4331813ec"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
       "source_file": "src/gui/vulkan/qt_attribution.json",
       "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/src/gui/vulkan/qt_attribution.json",
       "local_file": "QtBase/src/gui/vulkan/qt_attribution.json",
@@ -1385,22 +1337,6 @@
     {
       "component": "QtBase",
       "ref": "v6.12.0",
-      "source_file": "src/tools/moc/util/licenseheader.cpp.in",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/src/tools/moc/util/licenseheader.cpp.in",
-      "local_file": "QtBase/src/tools/moc/util/licenseheader.cpp.in",
-      "sha256": "331466d1e3f460ef7f3fe1fcd926307b0594311a2ed286b24ea649c82cc36cc5"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
-      "source_file": "src/widgets/doc/images/licensewizard-flow.png",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/src/widgets/doc/images/licensewizard-flow.png",
-      "local_file": "QtBase/src/widgets/doc/images/licensewizard-flow.png",
-      "sha256": "7a0e08a4499da689b635d1c2582ceb86d4a76b94940f2faae733af6e97621c43"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
       "source_file": "tests/auto/cmake/RunCMake/Sbom/attributions/multi_entry/qt_attribution.json",
       "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/tests/auto/cmake/RunCMake/Sbom/attributions/multi_entry/qt_attribution.json",
       "local_file": "QtBase/tests/auto/cmake/RunCMake/Sbom/attributions/multi_entry/qt_attribution.json",
@@ -1421,14 +1357,6 @@
       "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/tests/auto/corelib/serialization/qxmlstream/LICENSE.XML-Test-Suite.txt",
       "local_file": "QtBase/tests/auto/corelib/serialization/qxmlstream/LICENSE.XML-Test-Suite.txt",
       "sha256": "b2ace830c68a486d548834b9a93806d064a3eb041f603ec6368034d060fdf46a"
-    },
-    {
-      "component": "QtBase",
-      "ref": "v6.12.0",
-      "source_file": "tests/manual/examples/widgets/tools/settingseditor/inifiles/licensepage.ini",
-      "source_url": "https://raw.githubusercontent.com/qt/qtbase/v6.12.0/tests/manual/examples/widgets/tools/settingseditor/inifiles/licensepage.ini",
-      "local_file": "QtBase/tests/manual/examples/widgets/tools/settingseditor/inifiles/licensepage.ini",
-      "sha256": "1948dabaa56efecd40e55ce1ebc48af807422218408fa69b6c07bfecaddf6ea0"
     },
     {
       "component": "QtBase",
@@ -1517,14 +1445,6 @@
       "source_url": "https://raw.githubusercontent.com/qt/qtsvg/v6.12.0/LICENSES/LicenseRef-Qt-Commercial.txt",
       "local_file": "QtSvg/LICENSES/LicenseRef-Qt-Commercial.txt",
       "sha256": "9b1f50aae6267f9d5e0ceb6775ee86450262c25ec7c0573e151fe5d3f18a4700"
-    },
-    {
-      "component": "QtSvg",
-      "ref": "v6.12.0",
-      "source_file": "licenseRule.json",
-      "source_url": "https://raw.githubusercontent.com/qt/qtsvg/v6.12.0/licenseRule.json",
-      "local_file": "QtSvg/licenseRule.json",
-      "sha256": "b2d11d67146b60b43df54e9fb7aa24a20ea84896037dd400c663c3a1d3daf134"
     },
     {
       "component": "QtSvg",
