@@ -5,7 +5,7 @@
    viewBox="0 0 32 32"
    version="1.1"
    id="svg1"
-   sodipodi:docname="logo.svg"
+   sodipodi:docname="lumen.svg"
    xml:space="preserve"
    inkscape:version="1.4.3 (0d15f75, 2025-12-25)"
    inkscape:export-filename="logo.png"
@@ -25,10 +25,10 @@
      inkscape:pageopacity="0.0"
      inkscape:pagecheckerboard="0"
      inkscape:deskcolor="#d1d1d1"
-     showgrid="false"
+     showgrid="true"
      inkscape:zoom="17.832349"
-     inkscape:cx="6.476993"
-     inkscape:cy="15.112984"
+     inkscape:cx="8.3836403"
+     inkscape:cy="17.636487"
      inkscape:window-width="1920"
      inkscape:window-height="1009"
      inkscape:window-x="-8"
@@ -47,7 +47,7 @@
        opacity="0.14901961"
        empspacing="5"
        enabled="true"
-       visible="false" /></sodipodi:namedview><title
+       visible="true" /></sodipodi:namedview><title
      id="title1">Lumen DICOM Viewer</title><desc
      id="desc1">Editable stacked image frames and a scan cross-section.</desc><rect
      id="background"
@@ -64,7 +64,7 @@
      fill="none"
      stroke="#9ca9b8"
      stroke-width="1.5"
-     style="stroke:#9c99db;stroke-width:1.1;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+     style="stroke:#9c99db;stroke-width:0.5;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
      sodipodi:nodetypes="ccccc" /><rect
      id="front-frame"
      x="8"
@@ -74,7 +74,7 @@
      fill="#202020"
      stroke="#dddddd"
      stroke-width="1.5"
-     style="stroke:#e7e7e8;stroke-width:1.1;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
+     style="stroke:#e7e7e8;stroke-width:0.5;stroke-linejoin:round;stroke-dasharray:none;stroke-opacity:1"
      ry="0" /><ellipse
      id="scan-outline"
      cx="17"

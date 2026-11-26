@@ -28,6 +28,11 @@ NON_NOTICE_SUFFIXES = frozenset({
     ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".pro", ".qrc", ".qdoc", ".ui",
 })
 VENDORED = Path(__file__).resolve().parent / "licenses"
+# Packages whose licence (per their metadata: LGPL-3.0-only OR GPL-2.0-only OR GPL-3.0-only)
+# is reproduced from the vendored Qt sources, because their wheels lack the texts.
+_QT_LICENSES = ("QtBase/LICENSES/LGPL-3.0-only.txt", "QtBase/LICENSES/GPL-2.0-only.txt",
+                "QtBase/LICENSES/GPL-3.0-only.txt")
+VENDORED_LICENSES = {"PySide6-Essentials": _QT_LICENSES, "shiboken6": _QT_LICENSES}
 
 
 def is_notice_file(relative: Path) -> bool:
@@ -73,7 +78,7 @@ def generate_notices(target: Path) -> None:
     """
     target = Path(target).resolve()
     target.mkdir(parents=True, exist_ok=True)
-    packages = []
+    packages, missing = [], []
     for name in RUNTIME_DISTRIBUTIONS:
         dist = metadata.distribution(name)
         package_dir = target / name
@@ -92,8 +97,18 @@ def generate_notices(target: Path) -> None:
             destination.parent.mkdir(parents=True, exist_ok=True)
             shutil.copyfile(source, destination)
             files.append({"installed_file": relative.as_posix(), "copied_to": destination.relative_to(target).as_posix(), "sha256": _sha256(destination)})
-        if not files:
-            raise RuntimeError(f"No installed license/copyright notice found for {name} {dist.version}")
+        if not files and name not in VENDORED_LICENSES:
+            missing.append(f"{name} {dist.version}")
+            continue
+        if name in VENDORED_LICENSES:
+            # Qt's macOS/Linux wheels ship no licence files (the Windows wheel only a
+            # commercial-licence placeholder); the LGPL/GPL texts come from the pinned Qt sources.
+            for relative in VENDORED_LICENSES[name]:
+                destination = package_dir / "LICENSES" / Path(relative).name
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(VENDORED / relative, destination)
+                files.append({"vendored_file": relative, "copied_to": destination.relative_to(target).as_posix(),
+                              "sha256": _sha256(destination)})
         # Preserve the original metadata, including exact upstream licensing
         # statements and source URLs rather than paraphrasing a license grant.
         original_metadata = dist.read_text("METADATA")
@@ -112,6 +127,9 @@ def generate_notices(target: Path) -> None:
             "upstream_urls": _project_urls(dist),
             "notice_files": files,
         })
+
+    if missing:
+        raise RuntimeError("No installed license/copyright notice found for " + ", ".join(missing))
 
     python_license = next((path for path in (
         Path(sys.base_prefix) / "LICENSE.txt", Path(sys.base_prefix) / "LICENSE",

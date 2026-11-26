@@ -1,6 +1,6 @@
 # Lumen DICOM Viewer — notes for Claude and collaborators
 
-Offline Windows desktop viewer for DICOM and NIfTI (Python 3.12, PySide6, NumPy/SciPy,
+Offline desktop viewer for DICOM and NIfTI on Windows, macOS and Linux (Python 3.12, PySide6, NumPy/SciPy,
 pydicom, nibabel, VTK). Research/education software, **Not For Diagnostic Use**.
 Repository: https://github.com/farivarlab/DICOM_Viewer. User-facing changes go in
 `CHANGELOG.md`; this file records how the project works and where in-progress work stands.
@@ -80,6 +80,23 @@ py -3.12 -m venv .venv
      on both the portable folder and the single-file EXE.
   5. Tag `vX.Y.Z`, push `main` and the tag, then
      `gh release create vX.Y.Z --title "Lumen X.Y.Z" --notes-file <notes> dist\Lumen-X.Y.Z-Setup-win64.exe dist\Lumen-X.Y.Z-win64.exe dist\Lumen-X.Y.Z-portable-win64.zip dist\Lumen-X.Y.Z-source.zip dist\SHA256SUMS-X.Y.Z.txt`.
+  6. macOS and Linux: run the **macOS and Linux builds** workflow
+     (`.github/workflows/macos-linux.yml`) with the tag:
+     `gh workflow run macos-linux.yml --repo farivarlab/DICOM_Viewer -f tag=vX.Y.Z`.
+     It tests, builds and self-tests on macOS (Apple Silicon `macos-15`, Intel
+     `macos-15-intel`) and Linux (`ubuntu-22.04`), then attaches
+     `Lumen-X.Y.Z-macos-{arm64,x86_64}.zip`, `Lumen-X.Y.Z-linux-x86_64.tar.gz` and their
+     `SHA256SUMS-X.Y.Z-<platform>.txt` files to the release.
+  7. Homebrew: the tap is https://github.com/farivarlab/homebrew-lumen (users run
+     `brew install --cask farivarlab/lumen/lumen`). After step 6, regenerate the cask with
+     `python build_tools/homebrew_cask.py X.Y.Z > <tap checkout>/Casks/lumen.rb`, commit and
+     push the tap.
+- Platform differences: the classic caption/frame (`chrome.custom_frame()`) and ICO/.lnk
+  shortcut handling are Windows-only; macOS/Linux use native title bars (macOS: global menu
+  bar). Packaged macOS/Linux builds store settings and annotations in the per-user
+  application-data folder (`preferences.data_root()`), because a signed `Lumen.app` must not
+  be modified. macOS builds are ad-hoc signed only (no Developer ID / notarization), so
+  Gatekeeper asks users to choose "Open Anyway" once.
 
 ## Status and work log
 
@@ -101,8 +118,9 @@ Ideas not yet scheduled:
 comparison in MPR layouts, overlays in 3D, overlay colorbar, JSON import/export of
 annotations for sharing, MP4 export (needs an encoder dependency).
 
-Not planned here, need the maintainer: code signing (requires buying a certificate),
-macOS/Linux packaging (needs those machines or CI), browser thumbnails.
+Not planned here, need the maintainer: code signing (a Windows certificate; an Apple
+Developer ID for notarized macOS builds), browser thumbnails. macOS/Linux packaging is done
+through GitHub Actions (see the release steps).
 
 Design decisions so far:
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **macOS and Linux versions.** Lumen now runs on macOS (Apple Silicon and Intel, macOS 12 or later; install with `brew install --cask farivarlab/lumen/lumen` or from the release zip) and on 64-bit Linux (tar.gz with a desktop-entry installer). Both use the system's own title bar and window controls, and keep preferences and saved annotations in the per-user application-data folder. The macOS app is not notarized, so macOS asks once to confirm opening it.
+
 ## 0.4.1 — 2026-11-26
 
 ### Changed

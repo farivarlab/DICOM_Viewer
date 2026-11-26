@@ -1,6 +1,6 @@
 # Lumen DICOM Viewer
 
-A local Windows desktop viewer built with Python, Qt (PySide6), NumPy/SciPy, pydicom, and VTK. It includes native 3D volume rendering and linked patient-coordinate MPR. All processing happens on this computer; there are no servers, accounts, or uploads. Original DICOM files are opened read only.
+A local desktop viewer for Windows, macOS and Linux, built with Python, Qt (PySide6), NumPy/SciPy, pydicom, and VTK. It includes native 3D volume rendering and linked patient-coordinate MPR. All processing happens on this computer; there are no servers, accounts, or uploads. Original DICOM files are opened read only.
 
 **Status:** development release 0.4.1, including overlays, saved annotations, angled MPR, series comparison, 4D NIfTI and de-identified export. Tested on Windows with generated fixtures and a supplied 299-slice MRI series. Portable builds include the native NIfTI converter and do not require Python to be installed.
 
@@ -19,6 +19,20 @@ To build the installer on Windows, install [Inno Setup 6](https://jrsoftware.org
 ```
 
 This first builds the current portable release, then creates `dist/Lumen-0.4.1-Setup-win64.exe` and adds it to `dist/SHA256SUMS.txt`. To compile the installer again without rebuilding the runtime, use `-SkipPortableBuild`; the build checks that its payload still matches the current runtime sources. Use `-CompilerPath 'C:\Path\To\ISCC.exe'` for a nonstandard Inno Setup location. The uninstaller is generated and installed by Setup; it is not a separate download.
+
+## macOS (Homebrew)
+
+```bash
+brew install --cask farivarlab/lumen/lumen
+```
+
+This installs `Lumen.app` into Applications from the GitHub release, for Apple Silicon or Intel Macs running macOS 12 or later; `brew upgrade --cask lumen` updates it and `brew uninstall --cask --zap lumen` removes it with its preferences. You can also download `Lumen-<version>-macos-arm64.zip` (Apple Silicon) or `-macos-x86_64.zip` (Intel) from the release and drag the app into Applications.
+
+The app is not signed with an Apple Developer ID or notarized. The first time you open it, macOS may say it cannot verify the developer: open **System Settings → Privacy & Security** and choose **Open Anyway** for Lumen. On macOS, Lumen uses the system title bar and the menu bar at the top of the screen, and keeps preferences and saved annotations in `~/Library/Application Support/Lumen DICOM`.
+
+## Linux
+
+Download `Lumen-<version>-linux-x86_64.tar.gz` from the release, extract it and run `./Lumen`; `./install-desktop-entry.sh` adds it to your desktop's application menu. It needs a 64-bit desktop with glibc 2.35 or newer (Ubuntu 22.04, Debian 12, Fedora 36 or later) and OpenGL for 3D rendering. Preferences and saved annotations are kept in `~/.config/lumen-dicom`.
 
 ## Screenshots
 
