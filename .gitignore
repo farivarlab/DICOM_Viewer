@@ -11,6 +11,7 @@ artifacts/
 *.dicom
 DICOMDIR
 .lumen-settings.ini
+.lumen-annotations/
 *.nii
 *.nii.gz
 *.bval

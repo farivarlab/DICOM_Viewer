@@ -39,7 +39,7 @@ UninstallDisplayName=Lumen DICOM Viewer
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "{#Payload}\*"; DestDir: "{app}"; Excludes: "\logo.svg,\.lumen-settings.ini,\.cache\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "{#Payload}\*"; DestDir: "{app}"; Excludes: "\logo.svg,\.lumen-settings.ini,\.lumen-annotations\*,\.cache\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Payload}\logo.svg"; DestDir: "{app}"; Flags: onlyifdoesntexist
 
 [Icons]

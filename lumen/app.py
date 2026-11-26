@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 from pathlib import Path
 import sys
 import traceback
@@ -27,10 +28,11 @@ from .theme import (apply_theme, apply_theme_assets, load_theme, THEME_CHOICES,
                     THEME_NAMES, MODERN_THEMES, THEME_DIRECTORY, is_dark_theme)
 from .volume_view import VolumeView
 from .browser import CaseBrowser, Target
-from .metadata import MetadataPane
+from .metadata import MetadataPane, csv_cell
 from .export_dialog import ExportDialog
 from .nifti import load_input_series, export_nifti
 from .model import functional
+from . import annotation_store, overlay
 from .preferences import open_settings, saved_theme
 from .branding import application_icon, logo_file, refresh_application_icons
 from .chrome import ClassicDockWidget as QDockWidget, ClassicTitleBar, install_native_frame, native_frame_event
@@ -76,6 +78,14 @@ class MainWindow(QMainWindow):
         self._closing = False
         self._plane_cache = {}
         self._saved_marks: dict[str, tuple[tuple, dict[str, list]]] = {}  # series UID -> (frames, view -> marks)
+        # Marks also persist between sessions, beside the portable settings file.
+        self.annotation_directory = Path(self.settings.fileName()).resolve().parent / annotation_store.DIRECTORY
+        self._mark_save_timer = QTimer(self)
+        self._mark_save_timer.setSingleShot(True)
+        self._mark_save_timer.setInterval(400)
+        self._mark_save_timer.timeout.connect(self._persist_marks)
+        self.overlay_volume: ImageVolume | None = None
+        self._overlay_cache = {}
         self._inversion_override = None
         self.cursor = [0, 0, 0]
         self.source_index = 0
@@ -145,6 +155,8 @@ class MainWindow(QMainWindow):
         self.copy_action = self.action("Copy image", self.copy_image, "Ctrl+C")
         self.export_nifti_action = self.action("Export NIfTI…", self.export_nifti_series, "Ctrl+Shift+S")
         self.export_nifti_action.setToolTip("Export the selected volume or DICOM series as NIfTI (dcm2niix)")
+        self.export_measurements_action = self.action("Export measurements…", self.export_measurements)
+        self.export_measurements_action.setToolTip("Save every mark of the open series, with its measured values, as CSV")
         self.tags_action = self.action("DICOM tags", self.show_tags, "Ctrl+I", True)
         self.fit_action = self.action("Fit", self.fit_active, "F")
         self.reset_action = self.action("Reset", self.reset_views, "R")
@@ -169,13 +181,15 @@ class MainWindow(QMainWindow):
             self.tool_group.addAction(action)
             self.tools[name] = action
         self.tools["Window"].setChecked(True)
-        self.data_actions = [self.export_action, self.export_nifti_action, self.copy_action, self.tags_action, self.fit_action,
+        self.data_actions = [self.export_action, self.export_nifti_action, self.export_measurements_action,
+            self.copy_action, self.tags_action, self.fit_action,
             self.reset_action, self.rotate_action, self.flip_h_action, self.flip_v_action,
             self.clear_action, self.cine_action, self.invert_action, self.colorbar_action, *self.tools.values()]
 
     def _create_menu(self):
         file_menu = self.menuBar().addMenu("File")
-        for action in (self.open_action, self.folder_action, self.demo_action, self.export_action, self.export_nifti_action, self.copy_action):
+        for action in (self.open_action, self.folder_action, self.demo_action, self.export_action, self.export_nifti_action,
+                       self.export_measurements_action, self.copy_action):
             file_menu.addAction(action)
         file_menu.addSeparator()
         file_menu.addAction(self.action("Exit", self.close, "Alt+F4"))
@@ -313,6 +327,7 @@ class MainWindow(QMainWindow):
             view.window_changed.connect(self.change_window)
             view.cursor_changed.connect(self.move_crosshair)
             view.probed.connect(self.statusBar().showMessage)
+            view.marks_changed.connect(self._mark_save_timer.start)
         self.active_view = self.views["Source"]
         self.active_view.title = "2D image"
         self.active_view.active = True
@@ -332,6 +347,7 @@ class MainWindow(QMainWindow):
         settings = QVBoxLayout(inspector)
         settings.setContentsMargins(10, 6, 10, 10)
         settings.addWidget(self._create_display_controls())
+        settings.addWidget(self._create_overlay_controls())
         settings.addWidget(self._create_mpr_controls())
         settings.addWidget(self._create_volume_controls())
         self.control_hint = label("", "muted", True)
@@ -454,6 +470,49 @@ class MainWindow(QMainWindow):
         self.embedded_overlays.toggled.connect(self.update_overlays)
         display_settings.addWidget(self.embedded_overlays)
         return self.display_controls
+
+    def _create_overlay_controls(self):
+        self.overlay_controls = QWidget()
+        overlay_settings = QVBoxLayout(self.overlay_controls)
+        overlay_settings.setContentsMargins(0, 8, 0, 0)
+        overlay_settings.addWidget(label("Overlay", "section"))
+        form = QFormLayout()
+        form.setSpacing(6)
+        self.overlay_series = QComboBox()
+        self.overlay_series.setToolTip("Another opened series or NIfTI volume, aligned in patient coordinates")
+        self.overlay_series.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        self.overlay_series.addItem("None", None)
+        self.overlay_series.currentIndexChanged.connect(self.choose_overlay)
+        form.addRow("Image", self.overlay_series)
+        self.overlay_cmap = QComboBox()
+        self.overlay_cmap.addItems(list(STOPS))
+        self.overlay_cmap.setCurrentText("Hot iron")
+        self.overlay_cmap.currentTextChanged.connect(lambda _: self.refresh_views())
+        form.addRow("Colormap", self.overlay_cmap)
+        self.overlay_opacity = QSlider(Qt.Orientation.Horizontal)
+        self.overlay_opacity.setRange(0, 100)
+        self.overlay_opacity.setValue(60)
+        self.overlay_opacity.valueChanged.connect(lambda _: self.refresh_views())
+        form.addRow("Opacity", self.overlay_opacity)
+        self.overlay_low, self.overlay_high = QDoubleSpinBox(), QDoubleSpinBox()
+        for widget in (self.overlay_low, self.overlay_high):
+            widget.setRange(-1e9, 1e9)
+            widget.setDecimals(4)
+            widget.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+            widget.valueChanged.connect(lambda _: self.refresh_views())
+        form.addRow("From", self.overlay_low)
+        form.addRow("To", self.overlay_high)
+        self.overlay_interpolation = QComboBox()
+        self.overlay_interpolation.addItems(["Linear", "Nearest"])
+        self.overlay_interpolation.setToolTip("Nearest keeps label maps' integer labels intact")
+        self.overlay_interpolation.currentTextChanged.connect(lambda _: self.refresh_views())
+        form.addRow("Sampling", self.overlay_interpolation)
+        overlay_settings.addLayout(form)
+        self.overlay_hide_below = QCheckBox("Hide values below range")
+        self.overlay_hide_below.setChecked(True)
+        self.overlay_hide_below.toggled.connect(lambda _: self.refresh_views())
+        overlay_settings.addWidget(self.overlay_hide_below)
+        return self.overlay_controls
 
     def _create_mpr_controls(self):
         self.mpr_controls = QWidget()
@@ -590,6 +649,13 @@ class MainWindow(QMainWindow):
             self.mode_combo.model().item(i).setEnabled(self.data.mpr_available)
         self.overlays.setEnabled(is_2d)
         self.embedded_overlays.setEnabled(self.mode == "2D stack" and bool(self.data.overlay_layers(self.source_index)))
+        aligned = is_2d and overlay.has_geometry(self.data)
+        self.overlay_series.setEnabled(aligned)
+        self.overlay_series.setToolTip("Another opened series or NIfTI volume, aligned in patient coordinates" if aligned
+                                       else "Overlays need an image with patient geometry")
+        for widget in (self.overlay_cmap, self.overlay_opacity, self.overlay_low, self.overlay_high,
+                       self.overlay_interpolation, self.overlay_hide_below):
+            widget.setEnabled(aligned and self.overlay_volume is not None)
 
     def start_job(self, function, callback, error_title="Unable to open images", discard_on_cancel=True):
         if self.busy:
@@ -642,6 +708,7 @@ class MainWindow(QMainWindow):
         self.mode_combo.blockSignals(True)
         self.mode_combo.setCurrentText(self.mode)
         self.mode_combo.blockSignals(False)
+        self._sync_overlay_choices()
 
     def finish_job(self, callback, result):
         self.end_job()
@@ -715,6 +782,93 @@ class MainWindow(QMainWindow):
     def populate_series(self):
         self.browser.populate(self.series, self.data)
         self.filter_series(self.search.text())
+        self._sync_overlay_choices()
+
+    def _sync_overlay_choices(self):
+        """List every other opened series as a possible overlay and show the current one."""
+        current = self.overlay_volume.series.uid if self.overlay_volume else None
+        shown = self.data.series.uid if self.data else None
+        self.overlay_series.blockSignals(True)
+        self.overlay_series.clear()
+        self.overlay_series.addItem("None", None)
+        for series in sorted(self.series, key=lambda s: s.sort_key):
+            if series.uid != shown:
+                self.overlay_series.addItem(series.browser_label, series.uid)
+                self.overlay_series.setItemData(self.overlay_series.count() - 1,
+                                                f"{series.patient} / {series.study}\n{series.title}", Qt.ItemDataRole.ToolTipRole)
+        self.overlay_series.setCurrentIndex(max(0, self.overlay_series.findData(current)))
+        self.overlay_series.blockSignals(False)
+
+    def choose_overlay(self, _index=None):
+        uid = self.overlay_series.currentData()
+        if uid is None:
+            self.set_overlay(None)
+            return
+        if self.overlay_volume is not None and self.overlay_volume.series.uid == uid:
+            return
+        series = next((s for s in self.series if s.uid == uid), None)
+        if series is None:
+            self._sync_overlay_choices()
+            return
+        self.start_job(lambda progress: demo_volume() if uid == "demo" else load_input_series(series, progress),
+                       self.set_overlay, error_title="Unable to load overlay")
+
+    def set_overlay(self, volume):
+        """Fuse *volume* over every 2D pane, or remove the overlay when it is None."""
+        if volume is not None:
+            if not overlay.has_geometry(volume):
+                raise ValueError("This image has no patient geometry, so it cannot be aligned as an overlay.")
+            if self.data is not None and volume.geometry_unit != self.data.geometry_unit:
+                raise ValueError("The overlay's spatial units differ from the open image's, so they cannot be aligned.")
+        self.overlay_volume = volume
+        self._overlay_cache.clear()
+        self._sync_overlay_choices()
+        if volume is not None:
+            low, high, labels = overlay.default_range(volume)
+            for widget, value in ((self.overlay_low, low), (self.overlay_high, high)):
+                widget.blockSignals(True)
+                widget.setValue(value)
+                widget.blockSignals(False)
+            # Label maps get saturated colors that stay visible on bright anatomy, where
+            # Hot iron's white end would vanish; continuous maps keep the heat scale.
+            for widget, value in ((self.overlay_interpolation, "Nearest" if labels else "Linear"),
+                                  (self.overlay_cmap, "Cool" if labels else "Hot iron")):
+                widget.blockSignals(True)
+                widget.setCurrentText(value)
+                widget.blockSignals(False)
+            self._report_overlay_alignment()
+        self.refresh_views()
+
+    def _report_overlay_alignment(self):
+        base = getattr(self.data.dataset, "FrameOfReferenceUID", None) if self.data else None
+        other = getattr(self.overlay_volume.dataset, "FrameOfReferenceUID", None)
+        if base and other and str(base) != str(other):
+            self.statusBar().showMessage("Overlay uses a different DICOM frame of reference; "
+                                         "it is aligned by patient coordinates as recorded, without registration")
+        else:
+            self.statusBar().showMessage("Overlay aligned by patient coordinates")
+
+    def _fusion_layer(self, plane, index, shape):
+        """(values, RGBA) of the overlay on one displayed image, or (None, None)."""
+        if self.overlay_volume is None or not overlay.has_geometry(self.data):
+            return None, None
+        nearest = self.overlay_interpolation.currentText() == "Nearest"
+        key = (id(self.data), id(self.overlay_volume), plane, index, shape, nearest)
+        values = self._overlay_cache.get(key)
+        if values is None:
+            if plane == "Source":
+                world = overlay.source_points(self.data, index, shape)
+            else:
+                cursor = list(self.cursor)
+                cursor[PLANE_AXIS[plane]] = index
+                world = overlay.plane_points(self.data, plane, cursor, shape)
+            values = overlay.sample(self.overlay_volume, world, shape, nearest)
+            if len(self._overlay_cache) > 48:
+                self._overlay_cache.clear()
+            self._overlay_cache[key] = values
+        rgba = overlay.colorize(values, self.overlay_low.value(), self.overlay_high.value(), self.overlay_cmap.currentText(),
+                                self.overlay_opacity.value() / 100, self.overlay_hide_below.isChecked())
+        return values, rgba
 
     def filter_series(self, text):
         self.browser.filter(text)
@@ -750,27 +904,89 @@ class MainWindow(QMainWindow):
             self.mode_combo.setCurrentText("2D stack")
             self.reset_views()
 
+    def _current_marks(self):
+        return {name: list(view.marks) for name, view in self.views.items() if view.marks}
+
     def _store_marks(self):
         """Keep the open series' measurements so returning to it restores them."""
         if self.data is None:
             return
-        saved = {name: list(view.marks) for name, view in self.views.items() if view.marks}
+        saved = self._current_marks()
         if saved:
             self._saved_marks[self.data.series.uid] = (tuple(self.data.references), saved)
         else:
             self._saved_marks.pop(self.data.series.uid, None)
+        self._persist_marks()
+
+    def _persist_marks(self):
+        """Write the open series' marks to disk so they outlive this session."""
+        self._mark_save_timer.stop()
+        if self.data is None:
+            return
+        try:
+            annotation_store.save(self.annotation_directory, self.data, self._current_marks())
+        except OSError as error:
+            self.statusBar().showMessage(f"Annotations could not be saved: {error}")
 
     def _restored_marks(self, data):
-        frames, saved = self._saved_marks.get(data.series.uid, ((), {}))
+        if data.series.uid not in self._saved_marks:
+            return annotation_store.load(self.annotation_directory, data)
+        frames, saved = self._saved_marks[data.series.uid]
         if frames != tuple(data.references):
             # Reconstructed-plane indices depend on the exact frame set; source marks don't.
             saved = {name: marks for name, marks in saved.items() if name == "Source"}
         return saved
 
+    def _measurement_context(self, view, key):
+        """(image, spacing, value unit, spatial unit, image label) that a mark was drawn on, if available."""
+        data = self.data
+        spatial = data.geometry_unit if data.series.source_format != "DICOM" else None
+        if view == "Source":
+            _, path, frame = key
+            index = self._frame_lookup.get((path, frame))
+            if index is None:
+                return None
+            name = path.name if path else f"Image {index + 1}"
+            label = f"{index + 1} · {name}" + (f" · frame {frame + 1}" if frame else "")
+            unit = spatial or ("mm" if data.frame_calibrated(index) else "px")
+            return data.source[index], data.frame_spacing(index), data.frame_units(index), unit, label
+        if not data.mpr_ready:
+            return None  # reconstructed planes are measured once MPR has been built
+        _, index, slab, slab_mm = key
+        cursor = list(self.cursor)
+        cursor[PLANE_AXIS[view]] = index
+        image, spacing = data.plane(view, cursor, self.source_index, slab, slab_mm)
+        return image, spacing, data.units, spatial or "mm", f"{index + 1} · {slab}"
+
+    def export_measurements(self):
+        if self.data is None:
+            return
+        marks = self._current_marks()
+        if not marks:
+            self.statusBar().showMessage("The open series has no marks to export")
+            return
+        path, _ = QFileDialog.getSaveFileName(self, "Export measurements", "measurements.csv", "CSV (*.csv)")
+        if not path:
+            return
+        rows = annotation_store.measurement_rows(self.data, marks, self._measurement_context)
+        try:
+            with open(path, "w", newline="", encoding="utf-8-sig") as stream:
+                writer = csv.DictWriter(stream, annotation_store.MEASUREMENT_COLUMNS)
+                writer.writeheader()
+                writer.writerows({column: csv_cell(str(value)) for column, value in row.items()} for row in rows)
+            self.statusBar().showMessage(f"Exported {len(rows)} mark(s) to {Path(path).name}")
+        except OSError as exc:
+            QMessageBox.warning(self, "Export failed", str(exc))
+
     def set_data(self, data, target=None):
         self._store_marks()
         restored = self._restored_marks(data)
         self.data = data
+        if self.overlay_volume is not None and (self.overlay_volume.series.uid == data.series.uid
+                                                or self.overlay_volume.geometry_unit != data.geometry_unit):
+            self.overlay_volume = None  # an image is not fused over itself
+        self._overlay_cache.clear()
+        self._sync_overlay_choices()
         is_dicom = data.series.source_format == "DICOM"
         self.tags_action.setText("DICOM tags" if is_dicom else "NIfTI metadata")
         self.metadata_dock.setWindowTitle("DICOM metadata" if is_dicom else "NIfTI metadata")
@@ -845,6 +1061,7 @@ class MainWindow(QMainWindow):
             mode = "2D stack"
         self.mode = mode
         self.display_controls.setVisible(mode != "3D volume")
+        self.overlay_controls.setVisible(mode != "3D volume")
         self.control_hint.setText("Drag: orbit · wheel: zoom\nMiddle drag: pan" if mode == "3D volume" else
             "Wheel: browse · Ctrl+wheel: zoom\nRight drag: contrast · middle drag: pan")
         self.mpr_controls.setVisible(mode in ("MPR", "MPR + 3D"))
@@ -971,6 +1188,7 @@ class MainWindow(QMainWindow):
                        data.frame_calibrated(index), subtitle, None, directions, data.frame_units(index),
                        **self._display_options())
         view.set_file_annotations(data.header(index), data.overlay_layers(index))
+        view.set_fusion(*self._fusion_layer("Source", index, image.shape[:2]))
 
     def _show_plane(self, name, view, width, level):
         data = self.data
@@ -987,6 +1205,8 @@ class MainWindow(QMainWindow):
                        crosshair, directions, data.units, **self._display_options())
         # Reconstructed planes do not represent one acquired instance.
         view.set_file_annotations(data.dataset, (), reconstruction=True)
+        # A slab's overlay is sampled on its central plane, where the crosshair is.
+        view.set_fusion(*self._fusion_layer(name, index, image.shape[:2]))
 
     def _update_side_labels(self):
         data = self.data
@@ -1134,6 +1354,7 @@ class MainWindow(QMainWindow):
             view.pending.clear()
             view.preview = None
             view.viewport().update()
+        self._persist_marks()
 
     def toggle_cine(self, checked):
         if checked:
@@ -1307,6 +1528,8 @@ class MainWindow(QMainWindow):
             "Space: cine · Esc: cancel drawing\n"
             "Click a mark (with a non-drawing tool) to select it; Delete removes the\n"
             "selected mark, or the newest one. Right-click a mark for a delete menu.\n"
+            "Marks are saved automatically; File → Export measurements writes them as CSV.\n"
+            "Display → Overlay fuses another opened series, aligned in patient coordinates.\n"
             "Ctrl+I: metadata · Ctrl+S: save PNG · Ctrl+C: copy view\n"
             "Ctrl+Shift+S: export selected series / volume as NIfTI\n"
             "View → Appearance: choose modern or classic light/dark.\n"
@@ -1359,6 +1582,7 @@ class MainWindow(QMainWindow):
             event.ignore()
             return
         self.stop_cine()
+        self._persist_marks()
         self.volume_view.shutdown()
         for temporary in self.temporaries:
             temporary.cleanup()

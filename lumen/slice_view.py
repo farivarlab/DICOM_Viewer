@@ -44,7 +44,8 @@ def pixel_index(coordinate: float) -> int:
     return math.floor(coordinate)
 
 
-def roi_statistics(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spacing, precision=".1f"):
+def roi_values(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spacing) -> dict | None:
+    """Area and pixel statistics of a rectangular or elliptical ROI; None when it holds no pixel."""
     height, width = image.shape[:2]
     x0, x1 = sorted((p.x(), q.x()))
     y0, y1 = sorted((p.y(), q.y()))
@@ -53,20 +54,42 @@ def roi_statistics(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spa
     top, bottom = max(0, min(height, math.ceil(y0 - .5))), max(0, min(height, math.floor(y1 - .5) + 1))
     crop = image[top:bottom, left:right]
     if crop.size == 0:
-        return "Empty ROI"
+        return None
     if ellipse:
         yy, xx = np.mgrid[top:bottom, left:right] + .5
         mask = ((xx - (x0 + x1) / 2) / max(.5, (x1 - x0) / 2)) ** 2 + ((yy - (y0 + y1) / 2) / max(.5, (y1 - y0) / 2)) ** 2 <= 1
         crop = crop[mask]
     if crop.size == 0:
-        return "Empty ROI"
+        return None
     count = crop.shape[0] if ellipse else crop.shape[0] * crop.shape[1]
     area = count * spacing[0] * spacing[1]
     if image.ndim == 3:
-        channels = crop.reshape(-1, crop.shape[-1]).mean(axis=0)
-        return f"Area {area:.1f} {{area_unit}} · RGB mean " + ", ".join(f"{v:.1f}" for v in channels[:3])
-    return (f"Area {area:.1f} {{area_unit}} · mean {crop.mean():{precision}} {{unit}}\n"
-            f"SD {crop.std():{precision}} · min {crop.min():{precision}} · max {crop.max():{precision}}")
+        return {"area": area, "rgb_mean": [float(v) for v in crop.reshape(-1, crop.shape[-1]).mean(axis=0)[:3]]}
+    return {"area": area, "mean": float(crop.mean()), "sd": float(crop.std()),
+            "min": float(crop.min()), "max": float(crop.max())}
+
+
+def roi_statistics(image: np.ndarray, p: QPointF, q: QPointF, ellipse: bool, spacing, precision=".1f"):
+    values = roi_values(image, p, q, ellipse, spacing)
+    if values is None:
+        return "Empty ROI"
+    if "rgb_mean" in values:
+        return f"Area {values['area']:.1f} {{area_unit}} · RGB mean " + ", ".join(f"{v:.1f}" for v in values["rgb_mean"])
+    return (f"Area {values['area']:.1f} {{area_unit}} · mean {values['mean']:{precision}} {{unit}}\n"
+            f"SD {values['sd']:{precision}} · min {values['min']:{precision}} · max {values['max']:{precision}}")
+
+
+def measure(mark: Mark, image: np.ndarray, spacing) -> dict:
+    """The numbers a mark displays, for tables: length, angle, or ROI area and statistics."""
+    points = mark.points
+    if mark.tool == "Length" and len(points) >= 2:
+        p, q = points[0], points[-1]
+        return {"length": math.hypot((p.x() - q.x()) * spacing[0], (p.y() - q.y()) * spacing[1])}
+    if mark.tool == "Angle" and len(points) == 3:
+        return {"angle": angle_degrees(points, spacing)}
+    if mark.tool in ("Rectangle", "Ellipse") and len(points) >= 2:
+        return roi_values(image, points[0], points[-1], mark.tool == "Ellipse", spacing) or {}
+    return {}
 
 
 class SliceView(QGraphicsView):
@@ -75,6 +98,7 @@ class SliceView(QGraphicsView):
     window_changed = Signal(float, float)
     cursor_changed = Signal(str, float, float)
     probed = Signal(str)
+    marks_changed = Signal()
 
     def __init__(self, plane: str, parent=None):
         super().__init__(parent)
@@ -82,6 +106,10 @@ class SliceView(QGraphicsView):
         self.setScene(QGraphicsScene(self))
         self.item = QGraphicsPixmapItem()
         self.scene().addItem(self.item)
+        # A registered overlay shares the image's pixel grid, so it inherits its transform.
+        self.fusion_item = QGraphicsPixmapItem(self.item)
+        self.fusion_item.hide()
+        self.fusion_values = None
         self.setBackgroundBrush(QColor("#101010"))
         self.setFrameShape(QGraphicsView.Shape.NoFrame)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
@@ -147,10 +175,21 @@ class SliceView(QGraphicsView):
             rgba[mask != 0] = (255, 240, 145, 220)
             image = QImage(rgba.data, mask.shape[1], mask.shape[0], rgba.strides[0], QImage.Format.Format_RGBA8888).copy()
             item = QGraphicsPixmapItem(QPixmap.fromImage(image), self.item)
+            item.setZValue(1)  # stored DICOM overlays stay above a fused image
             item.setPos(column, row)
             item.setVisible(self.show_dicom_overlays)
             self.overlay_items.append(item)
         self.viewport().update()
+
+    def set_fusion(self, values=None, rgba=None):
+        """Show a registered overlay: *values* for the probe, *rgba* on the image's pixel grid."""
+        self.fusion_values = values
+        if rgba is None:
+            self.fusion_item.hide()
+            return
+        image = QImage(rgba.data, rgba.shape[1], rgba.shape[0], rgba.strides[0], QImage.Format.Format_RGBA8888).copy()
+        self.fusion_item.setPixmap(QPixmap.fromImage(image))
+        self.fusion_item.show()
 
     def set_image(self, image, spacing, key, width, level, colormap, inverted, calibrated,
                   subtitle="", crosshair=None, directions=None, units="value", spatial_unit=None, dicom_window=True):
@@ -312,10 +351,12 @@ class SliceView(QGraphicsView):
                 self.marks.append(Mark("Angle", self.pending.copy(), self.key))
                 self.pending.clear()
                 self.preview = None
+                self.marks_changed.emit()
         elif self.drag_kind == "Text":
             text, ok = QInputDialog.getText(self, "Add annotation", "Text:")
             if ok and text.strip():
                 self.marks.append(Mark("Text", [point], self.key, text.strip()))
+                self.marks_changed.emit()
         elif self.drag_kind == "Crosshair":
             self.cursor_changed.emit(self.plane, point.x(), point.y())
         self.viewport().update()
@@ -333,6 +374,10 @@ class SliceView(QGraphicsView):
             else:
                 scalar = f"{value:.1f}" if self.dicom_window else f"{value:.6g}"
                 value_text = f"{scalar} {self.units}"
+            if self.fusion_values is not None and self.fusion_values.shape == self.image.shape[:2]:
+                overlay = self.fusion_values[y, x]
+                if np.isfinite(overlay):
+                    value_text += f" · overlay {overlay:.6g}"
             self.probed.emit(f"{self.plane} · pixel {x}, {y} · {value_text}")
         if self.pending:
             self.preview = point
@@ -362,6 +407,7 @@ class SliceView(QGraphicsView):
             point = self.pixel_at(event.position().toPoint())
             if (point - self.pending[0]).manhattanLength() > .5:
                 self.marks.append(Mark(self.drag_kind, [self.pending[0], point], self.key))
+                self.marks_changed.emit()
             self.pending.clear()
             self.preview = None
         release = event.position().toPoint()
@@ -417,6 +463,7 @@ class SliceView(QGraphicsView):
         if self.selected is target:
             self.selected = None
         self.viewport().update()
+        self.marks_changed.emit()
         return True
 
     def mark_menu(self, mark: Mark) -> QMenu:
@@ -430,6 +477,7 @@ class SliceView(QGraphicsView):
         self.marks = [mark for mark in self.marks if mark.key != self.key]
         self.selected = None
         self.viewport().update()
+        self.marks_changed.emit()
 
     def keyPressEvent(self, event):
         if event.key() == Qt.Key.Key_Escape:
@@ -596,6 +644,8 @@ class SliceView(QGraphicsView):
         painter = QPainter(output)
         painter.setTransform(transform)
         painter.drawImage(QPointF(0, 0), self.item.pixmap().toImage())
+        if self.fusion_item.isVisible():  # a fused image is image content, not an annotation
+            painter.drawImage(QPointF(0, 0), self.fusion_item.pixmap().toImage())
         if annotated:
             for row, column, mask in self.overlay_layers:
                 rgba = np.zeros((*mask.shape, 4), dtype=np.uint8)

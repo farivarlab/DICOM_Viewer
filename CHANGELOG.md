@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Overlays.** Fuse another opened series or NIfTI volume over the 2D and MPR panes, for example a statistical or label map on an anatomical scan. Images are aligned by their patient coordinates, so they may differ in size, spacing and orientation. Choose the colormap, opacity, value range and sampling in the Display panel's new Overlay section. Label maps keep their labels with nearest sampling. The probe shows the overlay value, and PNG export and copies include the overlay.
+- **Saved annotations.** Marks are saved automatically per series and return when the series is opened again, also in later sessions. They are stored in `.lumen-annotations` beside the preferences file, without patient demographics, and follow their images across moved folders and ZIP re-extraction. Clear marks removes the saved copy too.
+- **Measurement export.** File → Export measurements… writes every mark of the open series to CSV, with length, angle, ROI area, mean, SD, minimum, maximum and units.
+
 ## 0.3.2 — 2026-11-26
 
 ### Fixed

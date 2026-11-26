@@ -10,7 +10,7 @@ Published downloads are listed on the **[GitHub Releases page](https://github.co
 
 The installer includes Python, Qt/VTK, image codecs and the NIfTI converter. It installs for your Windows account under `%LOCALAPPDATA%\Programs\Lumen`, without an administrator prompt. It creates Start menu entries and offers an optional desktop shortcut. The installer works offline and does not take over DICOM/NIfTI file associations.
 
-To update, close Lumen and run the newer installer. It reuses the installation folder and preserves your preferences and custom `logo.svg`. To remove it, use **Windows Settings → Apps → Installed apps → Lumen DICOM Viewer → Uninstall**, or **Uninstall Lumen** in its Start menu folder. The uninstaller removes the installed program, shortcuts, its preferences and generated icon cache. It leaves image files and exports alone, including files you put inside the installation folder.
+To update, close Lumen and run the newer installer. It reuses the installation folder and preserves your preferences and custom `logo.svg`. To remove it, use **Windows Settings → Apps → Installed apps → Lumen DICOM Viewer → Uninstall**, or **Uninstall Lumen** in its Start menu folder. The uninstaller removes the installed program, shortcuts, its preferences and generated icon cache. It leaves image files, exports and saved annotations (`.lumen-annotations`) alone, including files you put inside the installation folder.
 
 To build the installer on Windows, install [Inno Setup 6](https://jrsoftware.org/isinfo.php) and run:
 
@@ -69,16 +69,21 @@ Run them with any Python that has pydicom, for example `.\.venv\Scripts\python.e
 | --- | --- |
 | Import | DICOM files, scalar NIfTI `.nii` / `.nii.gz` (2D, 3D, 4D), recursive folders, DICOMDIR references, ZIP archives, drag and drop; patient → case/study → series → file/frame browser with search, scrolling and paged expansion; cancellable background indexing and decoding |
 | 2D | Default view when opening a series or file; centered first image; linked browser selection; wheel/slider, previous/next, direct image-number and keyboard navigation; per-file/per-frame window and calibration defaults; window/level and presets; auto contrast; zoom, pan, rotate, flip; MONOCHROME1 inversion; RGB and palette-color display |
-| Tools | Distance, three-point angle, rectangular and elliptical ROI with area/mean/SD/min/max, arrows, text; density probing; select and delete individual marks, or clear all |
+| Tools | Distance, three-point angle, rectangular and elliptical ROI with area/mean/SD/min/max, arrows, text; density probing; select and delete individual marks, or clear all; marks saved between sessions; measurement CSV |
 | Colormaps | Grayscale, bone, hot iron, viridis, magma, cool, rainbow; invert any map; labeled colorbars for 2D/MPR and the actual 3D transfer colors |
 | Playback | Cine loop, 1–60 fps, single-frame and multi-frame sequences |
 | MPR | Axial, coronal, sagittal views in patient LPS coordinates; linked crosshairs; MIP, MinIP, average slabs; physical spacing; resampling of oblique acquisitions and uniformly tilted stacks |
 | 3D | VTK adaptive GPU/CPU volume mapper; orbit/pan/zoom; CT tissue/bone/lung and scalar transfer presets; opacity; composite/MIP/MinIP; posterior cutaway; anatomical orientation cube |
 | DICOM annotations | Current file's patient name/ID, birth date/age/sex, study/series, institution, date/time, acquisition settings and accession in the image frame when present; stored 60xx Overlay Data with origin and frame handling; separate visibility controls |
+| Overlays | Fuse another opened series or NIfTI volume over 2D and MPR panes, aligned in patient coordinates; colormap, opacity, value range, linear or nearest sampling; overlay value in the probe |
 | Metadata/export | Searchable read-only DICOM tags or NIfTI header pane, hidden by default and toggled with Ctrl+I; metadata CSV; annotated/unannotated PNG export; NIfTI series/volume export; clipboard; actual VTK framebuffer capture in the 3D-only layout |
 | Interface | RAWDATA_Viewer's modern/classic light and dark palettes, typography and square window controls; dark image panes; Microsoft Fluent System Icons (MIT) for common commands and original specialist-tool glyphs; maximized startup with a small loading splash; one editable SVG for application identity |
 
-Measurements use millimeters only when pixel spacing is present; otherwise they use pixels. ROI statistics include the pixels whose centers fall inside the outline. User annotations remain in memory for the session and belong to their view, image and projection. Switching to another series and back restores them; **Clear marks** removes them. They are not saved to disk.
+Measurements use millimeters only when pixel spacing is present; otherwise they use pixels. ROI statistics include the pixels whose centers fall inside the outline. Marks belong to their view, image and projection. They are saved automatically and return when the series is opened again, also in later sessions; **Clear marks** removes them, including the saved copy.
+
+Saved marks live in `.lumen-annotations` beside the preferences file (next to `Lumen.exe`, or the project root when running from source), one JSON file per series. Image files are never written. The files hold image identifiers (SOP Instance UIDs and frame numbers), mark coordinates and annotation text, but no patient name, ID or dates. Marks on acquired images follow their instance, so they survive moved folders and ZIP re-extraction. Marks on reconstructed MPR planes return only when the series has exactly the same frames.
+
+**File → Export measurements…** writes every mark of the open series to CSV: the image it was drawn on, length, angle, ROI area, mean, SD, minimum and maximum, with value and spatial units (areas are in spatial unit²). MPR marks get values once MPR has been built in the session.
 
 To delete one mark, click it or its label with a non-drawing tool (Window, Pan, Zoom or Scroll) and press **Delete**, or right-click it for a delete menu. With nothing selected, **Delete** removes the newest mark on the current image.
 
@@ -99,6 +104,12 @@ The **Colorbar** checkbox or **View → Colorbar** toggles scalar legends in the
 **Export PNG → Include colorbar** adds the scale in a separate right margin, keeping the image pixels and measurements clear. It can be selected for annotated images and 3D captures. Unannotated 2D output always excludes the colorbar. The color scale does not rotate or flip with the image.
 
 The **Study browser** and **Display** panels can be detached by dragging their title bars or double-clicking them, just like the DICOM tags pane. Drag a panel back to either side to dock it, or double-click its floating title bar. Closed panels can be reopened from **View → Panels**.
+
+## Overlays
+
+Use **Overlay → Image** in the Display panel to fuse another opened series over the current one, for example a statistical or label map on an anatomical scan, or a second sequence. Any series or NIfTI volume in the study browser can be chosen. Both images are aligned by their recorded patient coordinates, so they may differ in size, spacing and orientation; no registration is performed. When two DICOM series come from different frames of reference, the status bar says so.
+
+Set the colormap, opacity and the value range: values below **From** are transparent (unless **Hide values below range** is cleared) and values above **To** use the top color. Label maps (integer values) start with their full label range, nearest sampling and the Cool colormap, so labels are never blended and stay visible on bright anatomy; continuous maps start with Hot iron from their median non-zero value. Colormaps that begin at black start a quarter of the way in, so the lowest shown values do not disappear. The pixel probe adds the overlay value under the cursor. Overlays appear in 2D and MPR panes, and in PNG export and copies, whether annotated or not. On MIP, MinIP and average slabs the overlay shows the central plane. 3D rendering does not show overlays.
 
 ## NIfTI import and conversion
 
