@@ -79,6 +79,9 @@ jobs:
         if: inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release upload "${{ inputs.tag }}" --clobber
-          dist/Lumen-*-macos-*.zip dist/Lumen-*-linux-*.tar.gz dist/SHA256SUMS-*-*.txt
+        # Each runner has only its own platform's files; unmatched patterns are dropped
+        # because gh rejects a literal pattern that matches nothing.
+        run: |
+          shopt -s nullglob
+          files=(dist/Lumen-*-macos-*.zip dist/Lumen-*-linux-*.tar.gz dist/SHA256SUMS-*-*.txt)
+          gh release upload "${{ inputs.tag }}" --clobber "${files[@]}"

@@ -41,7 +41,7 @@ def cask(version, digests):
 {sha}
   url "https://github.com/{REPOSITORY}/releases/download/v#{{version}}/Lumen-#{{version}}-macos-{asset_arch}.zip"
   name "Lumen DICOM Viewer"
-  desc "Offline DICOM and NIfTI viewer with MPR and 3D rendering (not for diagnostic use)"
+  desc "Offline DICOM and NIfTI viewer with MPR and 3D volume rendering"
   homepage "https://github.com/{REPOSITORY}"
 
   livecheck do

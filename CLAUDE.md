@@ -113,6 +113,7 @@ Released: 0.3.0, 0.3.1, 0.3.2, 0.4.0, 0.4.1, 0.4.2 (see `CHANGELOG.md`).
 | 4D NIfTI time axis and voxel time-course plot | Done, tested (`test_time_series.py`), released in 0.4.0 |
 | De-identified DICOM export | Done, tested (`test_anonymize.py`), released in 0.4.0 |
 | Movie export (GIF) of slices, time points or a 3D turn | Done, tested (`test_movie.py`), released in 0.4.0 |
+| macOS (Homebrew cask) and Linux builds via GitHub Actions | Done, released in 0.4.2; tap `farivarlab/homebrew-lumen` tests installs on both Mac runners |
 
 Ideas not yet scheduled:
 comparison in MPR layouts, overlays in 3D, overlay colorbar, JSON import/export of
