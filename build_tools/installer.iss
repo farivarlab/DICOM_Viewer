@@ -11,6 +11,8 @@ AppId={{6B4D7316-9954-49B3-84B7-363913BF6EE8}
 AppName=Lumen DICOM Viewer
 AppVersion={#AppVersion}
 AppVerName=Lumen DICOM Viewer {#AppVersion}
+; Without this, Setup.exe's file properties show no version.
+VersionInfoVersion={#AppVersion}
 AppPublisherURL=https://github.com/farivarlab/DICOM_Viewer
 AppSupportURL=https://github.com/farivarlab/DICOM_Viewer/issues
 AppUpdatesURL=https://github.com/farivarlab/DICOM_Viewer/releases

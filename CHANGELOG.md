@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.2 — 2026-11-26
 
 ### Fixed
 
@@ -15,6 +15,7 @@
 ### Build
 
 - Release builds stop when the runtime sources have uncommitted changes, so the source archive always matches the binaries. `BUILD-INFO.json` records the commit, and finalizing a release checks that it is still `HEAD`.
+- The installer's file properties now show its version. Setup.exe previously had a blank file version in Windows' Details tab.
 - `tests/colorbar_smoke.py` starts from default settings on every run. Its saved settings previously left the colorbar off, so the script failed on every run after the first.
 
 ## 0.3.1 — 2026-11-26
