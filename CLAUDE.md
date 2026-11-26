@@ -79,21 +79,21 @@ py -3.12 -m venv .venv
 
 ## Status and work log
 
-Released: 0.3.0, 0.3.1, 0.3.2 (see `CHANGELOG.md`).
+Released: 0.3.0, 0.3.1, 0.3.2, 0.4.0 (see `CHANGELOG.md`).
 
 0.4.0 roadmap (agreed with the maintainer, in this order of value):
 
 | Item | Status |
 | --- | --- |
-| Overlays / fusion (`overlay.py`) | Done, committed (`5821d4b`) |
-| Saved annotations + measurement CSV (`annotation_store.py`) | Done, committed (`5821d4b`) |
-| Angled MPR: tilt/rotate planes about the crosshair | Done, tested (`test_angled_mpr.py`), not yet committed |
-| Side-by-side comparison with linked views | Done, tested (`test_compare.py`), not yet committed |
-| 4D NIfTI time axis and voxel time-course plot | Done, tested (`test_time_series.py`), not yet committed |
-| De-identified DICOM export | Done, tested (`test_anonymize.py`), not yet committed |
-| Movie export (GIF) of slices, time points or a 3D turn | Done, tested (`test_movie.py`), not yet committed |
+| Overlays / fusion (`overlay.py`) | Done, released in 0.4.0 |
+| Saved annotations + measurement CSV (`annotation_store.py`) | Done, released in 0.4.0 |
+| Angled MPR: tilt/rotate planes about the crosshair | Done, tested (`test_angled_mpr.py`), released in 0.4.0 |
+| Side-by-side comparison with linked views | Done, tested (`test_compare.py`), released in 0.4.0 |
+| 4D NIfTI time axis and voxel time-course plot | Done, tested (`test_time_series.py`), released in 0.4.0 |
+| De-identified DICOM export | Done, tested (`test_anonymize.py`), released in 0.4.0 |
+| Movie export (GIF) of slices, time points or a 3D turn | Done, tested (`test_movie.py`), released in 0.4.0 |
 
-Next step: commit, then release 0.4.0 (minor bump: new features). Ideas not yet scheduled:
+Ideas not yet scheduled:
 comparison in MPR layouts, overlays in 3D, overlay colorbar, JSON import/export of
 annotations for sharing, MP4 export (needs an encoder dependency).
 
