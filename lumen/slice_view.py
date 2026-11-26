@@ -98,7 +98,9 @@ class SliceView(QGraphicsView):
     window_changed = Signal(float, float)
     cursor_changed = Signal(str, float, float)
     probed = Signal(str)
+    hovered = Signal(str, int, int)  # plane, pixel column, pixel row under the mouse
     marks_changed = Signal()
+    view_transformed = Signal(object)  # zoom, pan, rotation or flip changed
 
     def __init__(self, plane: str, parent=None):
         super().__init__(parent)
@@ -157,6 +159,19 @@ class SliceView(QGraphicsView):
         self.colorbar = ColorBar(self)
         self.colorbar.setToolTip("Pixel values after the modality transform. Values outside the window use its end colors.")
         self.colorbar.hide()
+        self._view_state = None
+
+    def view_state(self):
+        t = self.transform()
+        return (t.m11(), t.m12(), t.m21(), t.m22(), self.horizontalScrollBar().value(), self.verticalScrollBar().value())
+
+    def apply_view_state(self, source: "SliceView"):
+        """Show the same zoom, pan, rotation and flips as *source*, which shares this pane's pixel grid."""
+        self.setTransform(source.transform())
+        self.horizontalScrollBar().setValue(source.horizontalScrollBar().value())
+        self.verticalScrollBar().setValue(source.verticalScrollBar().value())
+        self._auto_fit, self._needs_fit = source._auto_fit, False
+        self._view_state = self.view_state()
 
     def set_file_annotations(self, dataset, layers=(), reconstruction=False):
         layers = list(layers)
@@ -379,6 +394,7 @@ class SliceView(QGraphicsView):
                 if np.isfinite(overlay):
                     value_text += f" · overlay {overlay:.6g}"
             self.probed.emit(f"{self.plane} · pixel {x}, {y} · {value_text}")
+            self.hovered.emit(self.plane, x, y)
         if self.pending:
             self.preview = point
             self.viewport().update()
@@ -509,10 +525,16 @@ class SliceView(QGraphicsView):
 
     def paintEvent(self, event):
         super().paintEvent(event)
+        # Every zoom, pan, rotation or flip repaints, so this is where linked panes learn of it.
+        state = self.view_state()
+        if state != self._view_state:
+            self._view_state = state
+            self.view_transformed.emit(self)
         painter = QPainter(self.viewport())
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.viewport().width(), self.viewport().height()
-        accent = {"Source": "#a4c4e0", "Axial": "#7ec8e3", "Coronal": "#80d7ad", "Sagittal": "#e5b677"}[self.plane]
+        accent = {"Source": "#a4c4e0", "Axial": "#7ec8e3", "Coronal": "#80d7ad", "Sagittal": "#e5b677",
+                  "Compare": "#c7a4e0"}[self.plane]
         painter.setPen(QPen(QColor(accent if self.active else "#454545"), 2 if self.active else 1))
         painter.drawRect(1, 1, w - 2, h - 2)
         if self.show_overlays:

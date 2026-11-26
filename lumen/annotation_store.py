@@ -53,8 +53,11 @@ def to_records(data, marks_by_view) -> list[dict]:
                 _, path, frame = mark.key
                 record.update(instance=_instance(data, path), frame=frame)
             else:
-                _, index, slab, slab_mm = mark.key
+                _, index, slab, slab_mm, *placement = mark.key
                 record.update(index=index, slab=slab, slab_mm=slab_mm)
+                if placement:  # an angled plane: its angles and the crosshair it passes through
+                    angles, cursor = placement
+                    record.update(angles=list(angles), cursor=list(cursor))
             records.append(record)
     return records
 
@@ -87,6 +90,9 @@ def from_records(data, records) -> dict[str, list[Mark]]:
                 key = ("Source", path, frame)
             elif view in PLANES:
                 key = (view, int(record["index"]), str(record["slab"]), float(record["slab_mm"]))
+                if "angles" in record:
+                    tilt, turn = (float(a) for a in record["angles"])
+                    key += ((tilt, turn), tuple(int(c) for c in record["cursor"]))
             else:
                 continue
             marks.setdefault(view, []).append(Mark(tool, points, key, str(record.get("label", ""))))

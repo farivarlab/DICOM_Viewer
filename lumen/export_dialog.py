@@ -1,4 +1,37 @@
-from PySide6.QtWidgets import QDialog, QVBoxLayout, QComboBox, QCheckBox, QDialogButtonBox, QLabel
+from PySide6.QtWidgets import QDialog, QVBoxLayout, QComboBox, QCheckBox, QDialogButtonBox, QLabel, QLineEdit, QFormLayout
+
+
+class DeidentifyDialog(QDialog):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Export de-identified DICOM")
+        self.setMinimumWidth(440)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 18, 18, 18)
+        layout.setSpacing(12)
+        description = QLabel("Copies the open series into a new folder. Names, identifiers, institutions, private "
+                             "tags and overlays are removed and UIDs are replaced. The original files are not changed.")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+        form = QFormLayout()
+        self.pseudonym = QLineEdit("ANONYMOUS")
+        self.pseudonym.setToolTip("Written as the patient name and patient ID")
+        form.addRow("Pseudonym", self.pseudonym)
+        layout.addLayout(form)
+        self.keep_demographics = QCheckBox("Keep patient age, sex, height and weight")
+        self.keep_demographics.setChecked(True)
+        layout.addWidget(self.keep_demographics)
+        self.keep_dates = QCheckBox("Keep dates and times")
+        layout.addWidget(self.keep_dates)
+        warning = QLabel("Text burned into the image pixels is not removed. Check ultrasound, screen captures "
+                         "and scanned documents before sharing.")
+        warning.setWordWrap(True)
+        warning.setObjectName("muted")
+        layout.addWidget(warning)
+        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Save | QDialogButtonBox.StandardButton.Cancel)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(buttons)
 
 
 class ExportDialog(QDialog):

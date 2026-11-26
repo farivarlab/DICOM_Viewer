@@ -15,9 +15,21 @@ import pydicom
 from pydicom.dataset import Dataset
 from pydicom.fileset import FileSet
 from pydicom.pixels import apply_modality_lut, apply_color_lut
-from scipy.ndimage import affine_transform
+from scipy.ndimage import affine_transform, map_coordinates
 
 Progress = Callable[[str], None]
+# Display axes of each reconstructed plane in LPS: (column direction, row direction).
+PLANE_AXES = {"Axial": ((1., 0., 0.), (0., 1., 0.)), "Coronal": ((1., 0., 0.), (0., 0., -1.)),
+              "Sagittal": ((0., 1., 0.), (0., 0., -1.))}
+
+
+def plane_rotation(angles) -> np.ndarray:
+    """Rotation of the MPR planes: *tilt* about the left-right axis, then *rotate* about the
+    superior-inferior axis, both in degrees."""
+    tilt, turn = np.radians(np.asarray(angles, float))
+    rx = np.array([[1, 0, 0], [0, math.cos(tilt), -math.sin(tilt)], [0, math.sin(tilt), math.cos(tilt)]])
+    rz = np.array([[math.cos(turn), -math.sin(turn), 0], [math.sin(turn), math.cos(turn), 0], [0, 0, 1]])
+    return rz @ rx
 MAX_VOXELS = 100_000_000
 MAX_WINDOW_SAMPLES = 2_000_000
 RESAMPLE_SLAB_VOXELS = 4_000_000
@@ -304,13 +316,64 @@ class ImageVolume:
         self.canonical, self.canonical_spacing, self.canonical_origin = canonical, spacing, origin
         return self
 
+    def _plane_layout(self, name, cursor):
+        """Shape, pixel spacing and the cursor's (column, row) of an unrotated plane."""
+        nz, ny, nx = self.canonical.shape
+        sx, sy, sz = self.canonical_spacing
+        x, y, z = cursor
+        return {"Axial": ((ny, nx), (sx, sy), (x, y)),
+                "Coronal": ((nz, nx), (sx, sz), (x, nz - 1 - z)),
+                "Sagittal": ((nz, ny), (sy, sz), (y, nz - 1 - z))}[name]
+
+    def plane_axes(self, name, angles=(0, 0)) -> tuple[np.ndarray, np.ndarray]:
+        rotation = plane_rotation(angles)
+        u, v = PLANE_AXES[name]
+        return rotation @ np.asarray(u), rotation @ np.asarray(v)
+
+    def plane_points(self, name: str, cursor, shape=None, angles=(0, 0), offset=0., pixels=None) -> np.ndarray:
+        """Patient coordinates (3, N) of a plane's pixel centres; the plane passes through *cursor*.
+
+        *pixels* gives (columns, rows) to evaluate instead of the whole grid, and *offset*
+        moves the plane along its normal, in millimetres.
+        """
+        default_shape, (su, sv), (c0, r0) = self._plane_layout(name, cursor)
+        if pixels is None:
+            rows, columns = default_shape if shape is None else shape
+            r, c = np.mgrid[:rows, :columns]
+            pixels = (c.ravel(), r.ravel())
+        columns, rows = (np.asarray(p, float) for p in pixels)
+        u, v = self.plane_axes(name, angles)
+        normal = np.cross(u, v)
+        centre = np.asarray(self.canonical_origin, float) + np.asarray(cursor, float) * np.asarray(self.canonical_spacing, float)
+        return (centre + normal * offset)[:, None] + u[:, None] * ((columns - c0) * su) + v[:, None] * ((rows - r0) * sv)
+
+    def world_to_canonical(self, world: np.ndarray) -> np.ndarray:
+        return (world - np.asarray(self.canonical_origin, float)[:, None]) / np.asarray(self.canonical_spacing, float)[:, None]
+
+    def _oblique_plane(self, name, cursor, slab_mode, slab_mm, angles):
+        shape, spacing, _ = self._plane_layout(name, cursor)
+        step = min(self.canonical_spacing)
+        radius = 0 if slab_mode == "Slice" else max(0, round((slab_mm / step - 1) / 2))
+        background = float(np.nanmin(self.canonical[::4, ::4, ::4]))
+        samples = []
+        for offset in np.arange(-radius, radius + 1) * step:
+            index = self.world_to_canonical(self.plane_points(name, cursor, shape, angles, offset))
+            samples.append(map_coordinates(self.canonical, index[::-1], order=1, mode="constant",
+                                           cval=background, output=np.float32, prefilter=False).reshape(shape))
+        if len(samples) == 1:
+            return samples[0], spacing
+        reducer = {"MIP": np.max, "MinIP": np.min, "Average": np.mean}[slab_mode]
+        return reducer(np.stack(samples), axis=0).astype(np.float32), spacing
+
     def plane(self, name: str, cursor: list[int], source_index: int = 0,
-              slab_mode: str = "Slice", slab_mm: float = 1) -> tuple[np.ndarray, tuple[float, float]]:
+              slab_mode: str = "Slice", slab_mm: float = 1, angles=(0, 0)) -> tuple[np.ndarray, tuple[float, float]]:
         if name == "Source":
             return self.source[source_index], self.frame_spacing(source_index)
         a = self.canonical
         if a is None:
             raise ValueError(self.geometry_note)
+        if any(angles):
+            return self._oblique_plane(name, cursor, slab_mode, slab_mm, angles)
         x, y, z = cursor
         axis, index = {"Axial": (0, z), "Coronal": (1, y), "Sagittal": (2, x)}[name]
         spacing = self.canonical_spacing[2 - axis]
@@ -327,9 +390,14 @@ class ImageVolume:
             return image, (sx, sy)
         return image[::-1], (sx if name == "Coronal" else sy, sz)
 
-    def pixel_to_cursor(self, plane: str, u: float, v: float, cursor: list[int]) -> list[int]:
-        result = cursor.copy()
+    def pixel_to_cursor(self, plane: str, u: float, v: float, cursor: list[int], angles=(0, 0)) -> list[int]:
         nz, ny, nx = self.canonical.shape
+        if any(angles):
+            # Item coordinates put pixel i's centre at i + 0.5.
+            world = self.plane_points(plane, cursor, angles=angles, pixels=([u - .5], [v - .5]))
+            index = np.round(self.world_to_canonical(world)[:, 0])
+            return [int(np.clip(index[i], 0, n - 1)) for i, n in enumerate((nx, ny, nz))]
+        result = cursor.copy()
         u, v = math.floor(u), math.floor(v)  # pixel i covers [i, i + 1) on screen
         if plane == "Axial":
             result[0], result[1] = np.clip(u, 0, nx - 1), np.clip(v, 0, ny - 1)

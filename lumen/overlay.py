@@ -30,20 +30,9 @@ def source_points(data, index: int, shape) -> np.ndarray:
     return data.affine[:3, :3] @ voxels + data.affine[:3, 3:4]
 
 
-def plane_points(data, plane: str, cursor, shape) -> np.ndarray:
+def plane_points(data, plane: str, cursor, shape, angles=(0, 0)) -> np.ndarray:
     """Patient coordinates (3, rows * columns) of a reconstructed plane, as ImageVolume.plane lays it out."""
-    nz = data.canonical.shape[0]
-    rows, columns = shape
-    r, c = np.mgrid[:rows, :columns]
-    x, y, z = cursor
-    if plane == "Axial":
-        grid = (c, r, np.full_like(r, z))
-    elif plane == "Coronal":
-        grid = (c, np.full_like(r, y), nz - 1 - r)
-    else:
-        grid = (np.full_like(r, x), c, nz - 1 - r)
-    voxels = np.stack([axis.ravel() for axis in grid]).astype(float)
-    return np.asarray(data.canonical_origin, float)[:, None] + voxels * np.asarray(data.canonical_spacing, float)[:, None]
+    return data.plane_points(plane, cursor, shape, angles)
 
 
 def sample(overlay, world: np.ndarray, shape, nearest=False) -> np.ndarray:

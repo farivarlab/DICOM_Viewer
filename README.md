@@ -72,11 +72,13 @@ Run them with any Python that has pydicom, for example `.\.venv\Scripts\python.e
 | Tools | Distance, three-point angle, rectangular and elliptical ROI with area/mean/SD/min/max, arrows, text; density probing; select and delete individual marks, or clear all; marks saved between sessions; measurement CSV |
 | Colormaps | Grayscale, bone, hot iron, viridis, magma, cool, rainbow; invert any map; labeled colorbars for 2D/MPR and the actual 3D transfer colors |
 | Playback | Cine loop, 1–60 fps, single-frame and multi-frame sequences |
-| MPR | Axial, coronal, sagittal views in patient LPS coordinates; linked crosshairs; MIP, MinIP, average slabs; physical spacing; resampling of oblique acquisitions and uniformly tilted stacks |
+| MPR | Axial, coronal, sagittal views in patient LPS coordinates; linked crosshairs; planes tilted and rotated about the crosshair; MIP, MinIP, average slabs; physical spacing; resampling of oblique acquisitions and uniformly tilted stacks |
 | 3D | VTK adaptive GPU/CPU volume mapper; orbit/pan/zoom; CT tissue/bone/lung and scalar transfer presets; opacity; composite/MIP/MinIP; posterior cutaway; anatomical orientation cube |
 | DICOM annotations | Current file's patient name/ID, birth date/age/sex, study/series, institution, date/time, acquisition settings and accession in the image frame when present; stored 60xx Overlay Data with origin and frame handling; separate visibility controls |
+| Compare | A second series beside the 2D image, resampled to its patient position, with linked scrolling, zoom, pan, rotation and flips |
+| 4D NIfTI | Volume selector and cine through time points, keeping position, zoom, layout and contrast; voxel time-course plot |
 | Overlays | Fuse another opened series or NIfTI volume over 2D and MPR panes, aligned in patient coordinates; colormap, opacity, value range, linear or nearest sampling; overlay value in the probe |
-| Metadata/export | Searchable read-only DICOM tags or NIfTI header pane, hidden by default and toggled with Ctrl+I; metadata CSV; annotated/unannotated PNG export; NIfTI series/volume export; clipboard; actual VTK framebuffer capture in the 3D-only layout |
+| Metadata/export | Searchable read-only DICOM tags or NIfTI header pane, hidden by default and toggled with Ctrl+I; metadata CSV; annotated/unannotated PNG export; NIfTI series/volume export; de-identified DICOM copies; animated GIF of slices, time points or a 3D turn; clipboard; actual VTK framebuffer capture in the 3D-only layout |
 | Interface | RAWDATA_Viewer's modern/classic light and dark palettes, typography and square window controls; dark image panes; Microsoft Fluent System Icons (MIT) for common commands and original specialist-tool glyphs; maximized startup with a small loading splash; one editable SVG for application identity |
 
 Measurements use millimeters only when pixel spacing is present; otherwise they use pixels. ROI statistics include the pixels whose centers fall inside the outline. Marks belong to their view, image and projection. They are saved automatically and return when the series is opened again, also in later sessions; **Clear marks** removes them, including the saved copy.
@@ -110,6 +112,26 @@ The **Study browser** and **Display** panels can be detached by dragging their t
 Use **Overlay → Image** in the Display panel to fuse another opened series over the current one, for example a statistical or label map on an anatomical scan, or a second sequence. Any series or NIfTI volume in the study browser can be chosen. Both images are aligned by their recorded patient coordinates, so they may differ in size, spacing and orientation; no registration is performed. When two DICOM series come from different frames of reference, the status bar says so.
 
 Set the colormap, opacity and the value range: values below **From** are transparent (unless **Hide values below range** is cleared) and values above **To** use the top color. Label maps (integer values) start with their full label range, nearest sampling and the Cool colormap, so labels are never blended and stay visible on bright anatomy; continuous maps start with Hot iron from their median non-zero value. Colormaps that begin at black start a quarter of the way in, so the lowest shown values do not disappear. The pixel probe adds the overlay value under the cursor. Overlays appear in 2D and MPR panes, and in PNG export and copies, whether annotated or not. On MIP, MinIP and average slabs the overlay shows the central plane. 3D rendering does not show overlays.
+
+## Angled MPR
+
+In MPR layouts, **Tilt** turns all three planes about the left-right axis and **Rotate** about the superior-inferior axis, both through the crosshair; **Reset plane angles** straightens them. Angled planes are resampled from the patient-coordinate volume with linear interpolation, keep the straight planes' pixel spacing, and support MIP, MinIP and average slabs along their normal. Clicking with the crosshair tool moves to the patient position under the cursor. Scrolling still steps through the volume's axial, coronal or sagittal index, moving the angled plane with it. Marks on an angled plane belong to its angles and crosshair position. Opening another series resets the angles.
+
+## Comparing two series
+
+Choose **Compare → Beside** in the Display panel to show another opened series next to the 2D image. Like overlays, it is aligned through patient coordinates: each displayed pixel shows the comparison value at the same patient position, so both panes share one pixel grid. Scrolling, zoom, pan, rotation and flips are linked in both directions, while window/level (right-drag in the comparison pane) is separate. The comparison is shown in the 2D stack layout, holds no marks, and is not included in PNG export.
+
+## 4D NIfTI
+
+A 4D NIfTI shows a **Volume** selector in the navigation bar. Stepping keeps the image position, zoom, layout and contrast. **Load all volumes** reads every time point once (up to 100 million samples), after which stepping is immediate and hovering over the image plots that voxel's values over time in the **Time course** section. **Cine through volumes** makes cine play time points instead of slices.
+
+## De-identified DICOM export
+
+**File → Export de-identified DICOM…** copies the open DICOM series into a new folder. Patient name and ID become a pseudonym; other identifiers, every person name, institutions, accession and study IDs are emptied; private tags, overlay planes and free-text comments are removed; dates and times are emptied unless kept; non-standard UIDs are replaced consistently, so the copy still forms one study and series. Age, sex, height and weight are kept unless you clear that option. The original files are only read. This is a conservative subset in the spirit of the DICOM Basic Application Level Confidentiality Profile, not a certified de-identification: text burned into pixels stays, and series that declare or commonly carry burned-in text (for example ultrasound and screen captures) are reported after export. Review the copies before sharing them.
+
+## Movie export
+
+**File → Export movie…** saves an animated, looping GIF at the cine frame rate: every slice of the active pane, every time point of a 4D NIfTI when **Cine through volumes** is ticked, or a full 3D turn in the 3D volume layout. Frames look as the pane shows them, with marks but without patient information or colorbar. Long sequences are sampled to 600 frames.
 
 ## NIfTI import and conversion
 

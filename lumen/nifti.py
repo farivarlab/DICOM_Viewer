@@ -86,6 +86,49 @@ def scan_inputs(paths, progress=lambda _: None):
     return result
 
 
+# All volumes of the most recently browsed 4D file, as displayed (magnitude, finite float32),
+# so stepping through time and plotting a voxel's time course need no further reads.
+_TIME_SERIES: dict[tuple, np.ndarray] = {}
+
+
+def _file_key(path):
+    path = Path(path).resolve()
+    stat = path.stat()
+    return str(path), stat.st_mtime_ns, stat.st_size
+
+
+def cached_time_series(path):
+    try:
+        return _TIME_SERIES.get(_file_key(path))
+    except OSError:
+        return None
+
+
+def cache_time_series(path, progress=lambda _: None):
+    """Read every volume of a 4D NIfTI once; None when the file is not 4D or too large to hold."""
+    cached = cached_time_series(path)
+    if cached is not None:
+        return cached
+    image = nib.load(str(path))
+    if len(image.shape) != 4 or np.prod(image.shape, dtype=float) > MAX_VOXELS:
+        return None
+    progress(f"Reading all {image.shape[3]:,} volumes of {Path(path).name}…")
+    values = np.asanyarray(image.dataobj)
+    values = np.abs(values) if np.iscomplexobj(values) else values
+    values = np.nan_to_num(np.asarray(values, np.float32), nan=0., posinf=0., neginf=0.)
+    _TIME_SERIES.clear()
+    _TIME_SERIES[_file_key(path)] = values
+    return values
+
+
+def time_course(path, voxel):
+    """Values of voxel (i, j, k) across all volumes, if the file's volumes are cached."""
+    values = cached_time_series(path)
+    if values is None or not all(0 <= v < n for v, n in zip(voxel, values.shape[:3])):
+        return None
+    return values[tuple(voxel)]
+
+
 def _native_data(image, index):
     data = np.asanyarray(image.dataobj[..., index] if len(image.shape) == 4 else image.dataobj)
     return data[:, :, None] if data.ndim == 2 else data
@@ -105,8 +148,9 @@ def load_nifti(series, progress=lambda _: None):
     world[:3] *= factor
     lps = RAS_LPS @ world
     spacing = np.linalg.norm(lps[:3, :3], axis=0)
-    values = _native_data(image, series.volume_index)
-    complex_data = np.iscomplexobj(values)
+    cached = cached_time_series(path) if len(image.shape) == 4 else None
+    values = cached[..., series.volume_index] if cached is not None else _native_data(image, series.volume_index)
+    complex_data = image.get_data_dtype().kind == "c"
     source = np.asarray(np.abs(values) if complex_data else values, dtype=np.float32).transpose(2, 1, 0)
     source = np.nan_to_num(source, copy=True, nan=0., posinf=0., neginf=0.)
     ds = Dataset()  # display adapter only; the metadata pane uses the real NIfTI header below

@@ -6,6 +6,11 @@
 
 - **Overlays.** Fuse another opened series or NIfTI volume over the 2D and MPR panes, for example a statistical or label map on an anatomical scan. Images are aligned by their patient coordinates, so they may differ in size, spacing and orientation. Choose the colormap, opacity, value range and sampling in the Display panel's new Overlay section. Label maps keep their labels with nearest sampling. The probe shows the overlay value, and PNG export and copies include the overlay.
 - **Saved annotations.** Marks are saved automatically per series and return when the series is opened again, also in later sessions. They are stored in `.lumen-annotations` beside the preferences file, without patient demographics, and follow their images across moved folders and ZIP re-extraction. Clear marks removes the saved copy too.
+- **Angled MPR.** Tilt and rotate the MPR planes about the crosshair, with slabs along the angled normal.
+- **Side-by-side comparison.** Show another opened series beside the 2D image, aligned by patient position, with scrolling, zoom, pan, rotation and flips linked.
+- **4D NIfTI time axis.** Step or play through the volumes of a 4D NIfTI while keeping the view, and plot a voxel's values over time.
+- **De-identified DICOM export.** Copy the open series into a new folder without patient identifiers, private tags or overlays, with replaced UIDs and optional dates and demographics.
+- **Movie export.** Save slices, 4D time points or a 3D turn as an animated GIF.
 - **Measurement export.** File → Export measurements… writes every mark of the open series to CSV, with length, angle, ROI area, mean, SD, minimum, maximum and units.
 
 ## 0.3.2 — 2026-11-26
