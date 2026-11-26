@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import shutil
 import sys
+import sysconfig
 
 
 RUNTIME_DISTRIBUTIONS = (
@@ -135,6 +136,8 @@ def generate_notices(target: Path) -> None:
     python_license = next((path for path in (
         Path(sys.base_prefix) / "LICENSE.txt", Path(sys.base_prefix) / "LICENSE",
         Path(sys.base_prefix) / "share/doc/python" / "LICENSE",
+        # macOS and Linux installs keep it in the standard library folder.
+        Path(sysconfig.get_paths(vars={"base": sys.base_prefix, "installed_base": sys.base_prefix})["stdlib"]) / "LICENSE.txt",
     ) if path.is_file()), None)
     if python_license is None:
         raise RuntimeError("The build interpreter's Python license could not be located")
