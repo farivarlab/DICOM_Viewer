@@ -16,7 +16,6 @@ hidden += collect_submodules("openjpeg")
 hidden += ["vtkmodules.vtkRenderingOpenGL2", "vtkmodules.vtkRenderingVolumeOpenGL2"]
 data = collect_data_files("lumen", includes=["resources/*.svg", "resources/fluent/*.svg", "resources/fluent/*.txt", "resources/fluent/*.json"])
 data += collect_data_files("lumen", includes=["resources/themes/*.json", "resources/themes/*.qss", "resources/glyphs/*.svg"])
-data += [(str(ROOT / "logo.svg"), "lumen/resources")]
 data += collect_data_files("_gdcm", includes=["XML/*"])
 for package in ("pylibjpeg", "pylibjpeg-openjpeg", "pyjpegls", "python-gdcm", "pydicom", "nibabel", "dcm2niix"):
     data += copy_metadata(package)

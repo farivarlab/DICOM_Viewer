@@ -21,11 +21,11 @@ def icon_color(icon):
     return icon.pixmap(32, 32).toImage().pixelColor(16, 16).name()
 
 
-def test_logo_reload_updates_existing_windows_dock_splash_and_keeps_image(app, study, tmp_path, monkeypatch):
-    logo = tmp_path / "logo.svg"
-    monkeypatch.setattr(branding, "LOGO_FILE", logo)
+def test_built_in_logo_identifies_every_surface_and_cannot_be_replaced(app, study, tmp_path, monkeypatch):
+    # A logo.svg beside the program no longer overrides the built-in one.
     monkeypatch.setattr(branding, "PROJECT_ROOT", tmp_path)
-    write_logo(logo, "#bb3355")
+    write_logo(tmp_path / "logo.svg", "#bb3355")
+    assert branding.logo_file() == Path(branding.__file__).with_name("resources") / "lumen.svg"
     window = MainWindow(settings_path=tmp_path / "settings.ini")
     window.show()
     install(window, study, app)
@@ -35,15 +35,16 @@ def test_logo_reload_updates_existing_windows_dock_splash_and_keeps_image(app, s
     splash = create_splash(app, window.theme_name)
     app.processEvents()
     try:
-        assert icon_color(window.windowIcon()) == "#bb3355"
-        write_logo(logo, "#3377aa")
-        assert window.reload_appearance_assets()
-        for icon in (app.windowIcon(), window.windowIcon(), dialog.windowIcon(),
-                     window.metadata_dock.windowIcon(), splash.windowIcon(), window.title_bar.system_button.icon()):
-            assert icon_color(icon) == "#3377aa"
+        expected = icon_color(branding.application_icon())
+        assert expected != "#bb3355"
+        menu_texts = {action.text() for action in window.findChildren(type(window.export_action))}
+        assert "Open logo folder" not in menu_texts
+        assert window.reload_appearance_assets()  # still reloads themes and glyphs
+        for icon in (app.windowIcon(), window.windowIcon(), dialog.windowIcon(), splash.windowIcon(),
+                     window.title_bar.system_button.icon()):
+            assert icon_color(icon) == expected
         assert window.image_capture(False) == image
         assert dialog.title_bar.system_button.icon().isNull() is False
-        assert len(list((tmp_path / ".cache/icons").glob("app-*.ico"))) == 1
     finally:
         splash.close()
         dialog.close()

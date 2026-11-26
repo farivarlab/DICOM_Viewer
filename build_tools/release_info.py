@@ -8,7 +8,7 @@ def sha256(path):
 
 
 def runtime_digest(root):
-    files = [root / name for name in ("launch_lumen.py", "Lumen.spec", "logo.svg", "requirements.txt", "requirements-build.txt")]
+    files = [root / name for name in ("launch_lumen.py", "Lumen.spec", "requirements.txt", "requirements-build.txt")]
     files += [path for directory in ("lumen", "build_tools") for path in (root / directory).rglob("*")
               if path.is_file() and "__pycache__" not in path.parts and path.suffix != ".pyc"]
     digest = hashlib.sha256()

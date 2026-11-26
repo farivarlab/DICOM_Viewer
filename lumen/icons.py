@@ -145,5 +145,5 @@ ACTION_ICONS = {
     "Export movie…": "export",
     "Colorbar": "colorbar",
     "Modern dark": "moon", "Modern light": "sun", "Classic light": "sun", "Classic dark": "moon",
-    "Reload appearance assets": "reset", "Open logo folder": "folder", "Open theme folder": "folder",
+    "Reload appearance assets": "reset", "Open theme folder": "folder",
 }

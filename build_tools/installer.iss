@@ -39,8 +39,11 @@ UninstallDisplayName=Lumen DICOM Viewer
 Name: "desktopicon"; Description: "Create a desktop shortcut"; GroupDescription: "Shortcuts:"; Flags: unchecked
 
 [Files]
-Source: "{#Payload}\*"; DestDir: "{app}"; Excludes: "\logo.svg,\.lumen-settings.ini,\.lumen-annotations\*,\.cache\*"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "{#Payload}\logo.svg"; DestDir: "{app}"; Flags: onlyifdoesntexist
+Source: "{#Payload}\*"; DestDir: "{app}"; Excludes: "\.lumen-settings.ini,\.lumen-annotations\*,\.cache\*"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+[InstallDelete]
+; Versions before 0.4.1 installed an editable logo.svg; the logo is now built in.
+Type: files; Name: "{app}\logo.svg"
 
 [Icons]
 Name: "{group}\Lumen DICOM Viewer"; Filename: "{app}\Lumen.exe"; WorkingDir: "{app}"

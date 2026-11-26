@@ -13,6 +13,10 @@ Repository: https://github.com/farivarlab/DICOM_Viewer. User-facing changes go i
 - **Patient geometry is authoritative.** Volumes use DICOM LPS millimetres. Arrays are
   `[slice, row, column]`; `ImageVolume.affine` maps `(column, row, slice)` voxel indices to
   LPS. MPR is refused (with an explanation in `geometry_note`) rather than shown wrong.
+- **The logo is built in.** `lumen/resources/lumen.svg` is the only logo (window, splash,
+  shortcuts, and the EXE icon via `build.py`). It is deliberately not user-replaceable; edit
+  that file to change the branding. Qt renders SVG Tiny only, so check new artwork with
+  `QSvgRenderer` (embedded PNG images render; filters and masks do not).
 - **No invented data.** Missing series numbers, calibration or units are reported as missing.
 - **No patient demographics in anything Lumen writes** except explicit user exports
   (and PNG export only when "Include patient information" is ticked).

@@ -10,7 +10,7 @@ Published downloads are listed on the **[GitHub Releases page](https://github.co
 
 The installer includes Python, Qt/VTK, image codecs and the NIfTI converter. It installs for your Windows account under `%LOCALAPPDATA%\Programs\Lumen`, without an administrator prompt. It creates Start menu entries and offers an optional desktop shortcut. The installer works offline and does not take over DICOM/NIfTI file associations.
 
-To update, close Lumen and run the newer installer. It reuses the installation folder and preserves your preferences and custom `logo.svg`. To remove it, use **Windows Settings → Apps → Installed apps → Lumen DICOM Viewer → Uninstall**, or **Uninstall Lumen** in its Start menu folder. The uninstaller removes the installed program, shortcuts, its preferences and generated icon cache. It leaves image files, exports and saved annotations (`.lumen-annotations`) alone, including files you put inside the installation folder.
+To update, close Lumen and run the newer installer. It reuses the installation folder and preserves your preferences and saved annotations. To remove it, use **Windows Settings → Apps → Installed apps → Lumen DICOM Viewer → Uninstall**, or **Uninstall Lumen** in its Start menu folder. The uninstaller removes the installed program, shortcuts, its preferences and generated icon cache. It leaves image files, exports and saved annotations (`.lumen-annotations`) alone, including files you put inside the installation folder.
 
 To build the installer on Windows, install [Inno Setup 6](https://jrsoftware.org/isinfo.php) and run:
 
@@ -91,7 +91,7 @@ To delete one mark, click it or its label with a non-drawing tool (Window, Pan, 
 
 Choose **View → Appearance → Modern light / Modern dark / Classic light / Classic dark**. These are independent local copies of RAWDATA_Viewer's JSON palettes, QSS styles and window controls; this viewer does not depend on that project's installation. Modern uses Segoe UI and Classic uses Tahoma. Modern light is the initial default. Existing light/dark preferences migrate to the matching modern preset. The moon button switches light/dark within the current family. Preferences stay in `.lumen-settings.ini`, without registry changes. Switching themes leaves image contrast, colormaps, and exports unchanged.
 
-Edit **[logo.svg](logo.svg)** in the project root to change the application icon. Restart or choose **View → Appearance → Reload appearance assets** (**Ctrl+Shift+R**) to update the window, title bar, taskbar identity, floating metadata pane, open dialogs, About logo, splash and matching project-local shortcuts. **Open logo folder** opens its location. Windows ICOs are generated at multiple sizes under `.cache/icons`; changed SVG content gets a new icon filename so Explorer can refresh its cached image. The bundled `lumen/resources/lumen.svg` is the fallback for missing/invalid custom artwork.
+The application logo is built in (`lumen/resources/lumen.svg`) and is not user-editable; it supplies the window, title bar, taskbar, dialogs, About box and splash. Windows ICOs for shortcuts are generated from it at multiple sizes under `.cache/icons`; changed artwork gets a new icon filename so Explorer refreshes its cached image.
 
 The Windows launch shortcut is **`Lumen DICOM Viewer.lnk`**. It points directly to `.venv/Scripts/pythonw.exe -m lumen` with this project as its working directory. After moving the project, recreate the shortcut with **`Create-Shortcut.ps1`**. Its icon refresh preserves existing launch options. Editable theme files live in `lumen/resources/themes`; **Open theme folder** and **Reload appearance assets** use the same workflow as RAWDATA_Viewer. Changes to these assets do not rebuild the existing EXE.
 
@@ -169,7 +169,7 @@ Compressed image support uses pydicom with GDCM, CharLS, OpenJPEG, and Pillow. T
 | Right-click a mark | Delete it, or all marks on the image |
 | Ctrl+I / Ctrl+S / Ctrl+C | Toggle metadata pane / export PNG / copy image |
 | Ctrl+Shift+S | Export selected DICOM series / NIfTI volume as NIfTI |
-| Ctrl+Shift+R | Reload editable logo, themes and glyphs |
+| Ctrl+Shift+R | Reload edited themes and glyphs |
 | F11 / F1 | Full screen / help |
 
 In 3D, drag to orbit, middle drag to pan, and use the wheel to zoom. Display windowing and colormaps apply to 2D views; 3D uses its separate transfer presets. For 3D image export, select **3D volume** in the layout menu.

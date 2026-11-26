@@ -1,4 +1,4 @@
-"""One editable SVG supplies the application's identity on every Qt surface."""
+"""The built-in SVG logo supplies the application's identity on every Qt surface."""
 
 from pathlib import Path
 from functools import lru_cache
@@ -17,15 +17,13 @@ from .windows_shortcut import refresh_project_shortcuts
 
 RESOURCE_DIRECTORY = Path(__file__).with_name("resources")
 PROJECT_ROOT = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) else RESOURCE_DIRECTORY.parent.parent
-LOGO_FILE = PROJECT_ROOT / "logo.svg"
+# The logo is part of the application and cannot be replaced by users; change it here.
+LOGO_FILE = RESOURCE_DIRECTORY / "lumen.svg"
 ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
 
 def logo_file():
-    if LOGO_FILE.is_file():
-        return LOGO_FILE
-    bundled = RESOURCE_DIRECTORY / "logo.svg"
-    return bundled if bundled.is_file() else RESOURCE_DIRECTORY / "lumen.svg"
+    return LOGO_FILE
 
 
 @lru_cache(maxsize=8)
@@ -45,11 +43,7 @@ def _icon_from_svg(source):
 
 
 def application_icon() -> QIcon:
-    """Read editable logo.svg afresh; reuse rasterizations of unchanged content."""
-    try:
-        return QIcon(_icon_from_svg(logo_file().read_bytes()))
-    except (OSError, ValueError):
-        return QIcon(_icon_from_svg((RESOURCE_DIRECTORY / "lumen.svg").read_bytes()))
+    return QIcon(_icon_from_svg(logo_file().read_bytes()))
 
 
 def update_windows_icon(icon):
@@ -101,18 +95,6 @@ def set_process_identity():
             function("LocalImagingTools.Lumen.DICOMViewer")
         except OSError:
             pass
-
-
-def refresh_application_icons(app, *, shortcuts=True):
-    from PySide6.QtWidgets import QDockWidget
-    icon = application_icon()
-    app.setWindowIcon(icon)
-    for widget in app.allWidgets():
-        if widget.isWindow() or isinstance(widget, QDockWidget):
-            widget.setWindowIcon(icon)
-    if shortcuts:
-        update_windows_icon(icon)
-    return icon
 
 
 def _write_icon(path, data):

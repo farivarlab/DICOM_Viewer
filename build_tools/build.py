@@ -46,7 +46,7 @@ def main():
     finalize_release(material)
 
 
-RUNTIME_SOURCES = ("launch_lumen.py", "Lumen.spec", "logo.svg", "requirements.txt", "requirements-build.txt",
+RUNTIME_SOURCES = ("launch_lumen.py", "Lumen.spec", "requirements.txt", "requirements-build.txt",
                    "lumen", "build_tools")
 
 
@@ -98,14 +98,12 @@ def finalize_release(material):
         raise SystemExit("The binaries were built from a different commit than HEAD; rebuild before releasing.")
     shutil.copy2(ROOT / "PORTABLE.txt", folder / "READ-ME.txt")
     shutil.copy2(material / "BUILD-INFO.json", folder / "BUILD-INFO.json")
-    shutil.copy2(ROOT / "logo.svg", folder / "logo.svg")
     if (ROOT / "LICENSE").is_file():
         shutil.copy2(ROOT / "LICENSE", folder / "LICENSE.txt")
     shutil.copytree(material / "THIRD_PARTY", folder / "THIRD_PARTY", dirs_exist_ok=True)
     shutil.make_archive(str(folder), "zip", root_dir=dist, base_dir=folder.name)
     source_zip = dist / f"Lumen-{__version__}-source.zip"
     git("archive", "--format=zip", f"--output={source_zip}", "HEAD")
-    shutil.copy2(ROOT / "logo.svg", dist / "logo.svg")
     shutil.copy2(ROOT / "PORTABLE.txt", dist / "READ-ME.txt")
     if (ROOT / "LICENSE").is_file():
         shutil.copy2(ROOT / "LICENSE", dist / "LICENSE.txt")

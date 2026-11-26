@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **New application logo.** The window, taskbar, splash, dialogs, shortcuts and executables use the new artwork.
+- **The logo is built in.** It can no longer be replaced through a `logo.svg` beside the program, and View → Appearance no longer has *Open logo folder*; *Reload appearance assets* now reloads themes and glyphs only. The installer removes the `logo.svg` left by earlier versions.
+
 ## 0.4.0 — 2026-11-26
 
 ### Added

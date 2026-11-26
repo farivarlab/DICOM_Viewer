@@ -39,7 +39,7 @@ from .export_dialog import DeidentifyDialog
 from .model import functional
 from . import annotation_store, overlay
 from .preferences import open_settings, saved_theme
-from .branding import application_icon, logo_file, refresh_application_icons
+from .branding import application_icon
 from .chrome import ClassicDockWidget as QDockWidget, ClassicTitleBar, install_native_frame, native_frame_event
 from .dialogs import QFileDialog, QMessageBox, install_dialog_style
 from .caption_icons import clear_glyph_cache
@@ -226,7 +226,6 @@ class MainWindow(QMainWindow):
             self.theme_actions[mode] = action
         theme_menu.addSeparator()
         theme_menu.addAction(self.action("Reload appearance assets", self.reload_appearance_assets, "Ctrl+Shift+R"))
-        theme_menu.addAction(self.action("Open logo folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(logo_file().parent)))))
         theme_menu.addAction(self.action("Open theme folder", lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(THEME_DIRECTORY)))))
         tools = self.menuBar().addMenu("Tools")
         tools.addActions(list(self.tools.values()))
@@ -1907,7 +1906,6 @@ class MainWindow(QMainWindow):
         clear_icon_cache()
         clear_glyph_cache()
         if self.set_theme(self.theme_name, persist=False):
-            refresh_application_icons(QApplication.instance())
             self.statusBar().showMessage("Appearance assets reloaded")
             return True
         return False
@@ -1946,7 +1944,7 @@ class MainWindow(QMainWindow):
             "Ctrl+I: metadata · Ctrl+S: save PNG · Ctrl+C: copy view\n"
             "Ctrl+Shift+S: export selected series / volume as NIfTI\n"
             "View → Appearance: choose modern or classic light/dark.\n"
-            "Ctrl+Shift+R: reload edited logo and appearance assets.\n\n"
+            "Ctrl+Shift+R: reload edited themes and glyphs.\n\n"
             "MPR uses patient LPS coordinates. Click a pane to select it.\n"
             "In 3D, left drag orbits, middle drag pans, and the wheel zooms.\n"
             "The cutaway slider removes the posterior side of the volume.")

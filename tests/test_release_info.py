@@ -7,7 +7,7 @@ spec.loader.exec_module(release_info)
 
 
 def test_runtime_fingerprint_tracks_assets_and_ignores_bytecode(tmp_path):
-    for name in ("launch_lumen.py", "Lumen.spec", "logo.svg", "requirements.txt", "requirements-build.txt", "lumen/app.py", "lumen/resources/theme.qss", "build_tools/installer.iss"):
+    for name in ("launch_lumen.py", "Lumen.spec", "requirements.txt", "requirements-build.txt", "lumen/app.py", "lumen/resources/theme.qss", "build_tools/installer.iss"):
         file = tmp_path / name
         file.parent.mkdir(parents=True, exist_ok=True)
         file.write_text("original")
