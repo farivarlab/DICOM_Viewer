@@ -100,7 +100,7 @@ py -3.12 -m venv .venv
 
 ## Status and work log
 
-Released: 0.3.0, 0.3.1, 0.3.2, 0.4.0, 0.4.1 (see `CHANGELOG.md`).
+Released: 0.3.0, 0.3.1, 0.3.2, 0.4.0, 0.4.1, 0.4.2 (see `CHANGELOG.md`).
 
 0.4.0 roadmap (agreed with the maintainer, in this order of value):
 
