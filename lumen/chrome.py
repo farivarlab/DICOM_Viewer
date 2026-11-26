@@ -11,6 +11,12 @@ from .caption_icons import glyph_icon
 from .theme import load_theme, MODERN_THEMES
 
 
+def custom_frame() -> bool:
+    """Windows gets Lumen's classic caption and frame; macOS and Linux keep their native
+    title bars, window controls and window-manager behaviour."""
+    return sys.platform == "win32"
+
+
 def frame_hit_test(x, y, width, height, margin=5):
     """Windows resize hit codes, in one consistent (physical-pixel) space."""
     if not (0 <= x < width and 0 <= y < height):
@@ -41,9 +47,10 @@ class _TitleLabel(QLabel):
 class ClassicTitleBar(QWidget):
     """A real replacement caption, rather than an extra banner in the workspace."""
 
-    def __init__(self, window, *, allow_minimize=True, allow_maximize=True):
+    def __init__(self, window, *, allow_minimize=True, allow_maximize=True, native=False):
         super().__init__(window)
         self.window = window
+        self.native = native  # the platform draws the real caption; this one stays hidden
         self.allow_minimize = allow_minimize
         self.allow_maximize = allow_maximize
         self._icon_color = "#000000"
@@ -134,7 +141,7 @@ class ClassicTitleBar(QWidget):
                                                     self._icon_color, self._button_background))
         self.maximize_button.setToolTip("Restore window" if maximized else "Maximize window")
         self.maximize_button.setAccessibleName(self.maximize_button.toolTip())
-        self.setVisible(not self.window.isFullScreen())
+        self.setVisible(not self.native and not self.window.isFullScreen())
 
     def eventFilter(self, watched, event):
         from shiboken6 import isValid
@@ -284,6 +291,8 @@ class ClassicDockWidget(QDockWidget):
 
     def _floating_changed(self, floating):
         self._classic_native_frame = False
+        if not custom_frame():
+            return  # floating docks keep the platform's own tool-window caption
         self.floating_title_bar.system_menu_action.setEnabled(floating)
         self.setTitleBarWidget(self.floating_title_bar if floating else None)
         self.floating_title_bar.setVisible(floating)

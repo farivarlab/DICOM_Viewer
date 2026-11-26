@@ -1,8 +1,9 @@
-"""Build portable Windows releases without reading studies or local validation artifacts."""
+"""Build portable releases (Windows, macOS, Linux) without reading studies or local validation artifacts."""
 from pathlib import Path
 import json
 import os
 import shutil
+import tarfile
 import subprocess
 import sys
 import argparse
@@ -11,7 +12,10 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 from lumen import __version__
 from notices import generate_notices
-from release_info import runtime_digest, sha256
+from release_info import platform_tag, runtime_digest, sha256
+
+WINDOWS, MACOS = sys.platform == "win32", sys.platform == "darwin"
+TAG = platform_tag()
 
 
 def icon_file(material):
@@ -26,16 +30,17 @@ def icon_file(material):
     QSvgRenderer(str(logo_file())).render(painter)
     painter.end()
     image.save(str(material / "lumen.png"))
-    with Image.open(material / "lumen.png") as png:
-        png.save(material / "lumen.ico", sizes=[(v, v) for v in (16, 24, 32, 48, 64, 128, 256)])
+    if WINDOWS:
+        with Image.open(material / "lumen.png") as png:
+            png.save(material / "lumen.ico", sizes=[(v, v) for v in (16, 24, 32, 48, 64, 128, 256)])
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--finalize-only", action="store_true", help="Archive and checksum already-built binaries")
     args = parser.parse_args()
-    if sys.platform != "win32":
-        raise SystemExit("Build this Windows release on 64-bit Windows with Python 3.12.")
+    if sys.version_info[:2] != (3, 12):
+        raise SystemExit("Build releases with Python 3.12, the tested runtime.")
     # The source archive is taken from HEAD, so it only corresponds to the binaries
     # when every runtime input is committed.
     require_committed_sources()
@@ -66,6 +71,38 @@ def build_binaries(material):
     fingerprint = runtime_digest(ROOT)
     icon_file(material)
     generate_notices(material / "THIRD_PARTY")
+    if WINDOWS:
+        write_version_info(material)
+    env = dict(os.environ, PYINSTALLER_CONFIG_DIR=str(ROOT / "build" / f"pyinstaller-cache-{__version__}"))
+    if WINDOWS:
+        # Dependency discovery must not collect similarly named DLLs from unrelated tools.
+        system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+        env["PATH"] = os.pathsep.join((str(system_root / "System32"), str(system_root), str(Path(sys.executable).parent)))
+    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+                    "--workpath", str(ROOT / "build" / f"release-{__version__}"), str(ROOT / "Lumen.spec")],
+                   cwd=ROOT, env=env, check=True)
+    if fingerprint != runtime_digest(ROOT):
+        raise RuntimeError("Runtime sources changed during compilation; rebuild before releasing.")
+    (material / "BUILD-INFO.json").write_text(json.dumps({
+        "version": __version__, "platform": TAG, "runtime_digest": fingerprint, "commit": git("rev-parse", "HEAD").strip(),
+        "executable_sha256": sha256(executable()),
+    }, indent=2), encoding="utf-8")
+
+
+def payload():
+    """The built one-folder application."""
+    return ROOT / "dist" / (f"Lumen-{__version__}-portable-win64" if WINDOWS else f"Lumen-{__version__}-{TAG}")
+
+
+def executable():
+    if WINDOWS:
+        return payload() / "Lumen.exe"
+    if MACOS:
+        return ROOT / "dist" / "Lumen.app" / "Contents" / "MacOS" / "Lumen"
+    return payload() / "Lumen"
+
+
+def write_version_info(material):
     version = tuple(int(n) for n in __version__.split(".")) + (0,)
     (material / "version_info.txt").write_text(
         f"VSVersionInfo(ffi=FixedFileInfo(filevers={version!r}, prodvers={version!r}, mask=0x3f, flags=0, OS=0x40004, fileType=1, subtype=0, date=(0,0)), "
@@ -73,29 +110,16 @@ def build_binaries(material):
         f"StringStruct('FileDescription','Lumen DICOM Viewer'), StringStruct('FileVersion','{__version__}'), "
         f"StringStruct('ProductName','Lumen DICOM'), StringStruct('ProductVersion','{__version__}'), "
         "StringStruct('OriginalFilename','Lumen.exe')])]), VarFileInfo([VarStruct('Translation',[1033,1200])])])", encoding="utf-8")
-    # Dependency discovery must not collect similarly named DLLs from unrelated tools.
-    system_root = Path(os.environ.get("SystemRoot", r"C:\Windows"))
-    clean_path = os.pathsep.join((str(system_root / "System32"), str(system_root), str(Path(sys.executable).parent)))
-    env = dict(os.environ, PYINSTALLER_CONFIG_DIR=str(ROOT / "build" / f"pyinstaller-cache-{__version__}"), PATH=clean_path)
-    subprocess.run([sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
-                    "--workpath", str(ROOT / "build" / f"release-{__version__}"), str(ROOT / "Lumen.spec")],
-                   cwd=ROOT, env=env, check=True)
-    if fingerprint != runtime_digest(ROOT):
-        raise RuntimeError("Runtime sources changed during compilation; rebuild before releasing.")
-    payload = ROOT / "dist" / f"Lumen-{__version__}-portable-win64"
-    (material / "BUILD-INFO.json").write_text(json.dumps({
-        "version": __version__, "runtime_digest": fingerprint, "commit": git("rev-parse", "HEAD").strip(),
-        "executable_sha256": sha256(payload / "Lumen.exe"),
-    }, indent=2), encoding="utf-8")
-
 
 
 def finalize_release(material):
     dist = ROOT / "dist"
-    folder = dist / f"Lumen-{__version__}-portable-win64"
+    folder = payload()
     built = json.loads((material / "BUILD-INFO.json").read_text(encoding="utf-8")).get("commit")
     if built != git("rev-parse", "HEAD").strip():
         raise SystemExit("The binaries were built from a different commit than HEAD; rebuild before releasing.")
+    if not WINDOWS:
+        return finalize_unix(material, dist, folder)
     shutil.copy2(ROOT / "PORTABLE.txt", folder / "READ-ME.txt")
     shutil.copy2(material / "BUILD-INFO.json", folder / "BUILD-INFO.json")
     if (ROOT / "LICENSE").is_file():
@@ -116,6 +140,36 @@ def finalize_release(material):
     (dist / f"BUILD-DEPENDENCIES-{__version__}.txt").write_text(versions, encoding="utf-8")
     print(json.dumps({path.name: {"bytes": path.stat().st_size, "sha256": sha256(path)}
                       for path in files}, indent=2))
+
+
+def finalize_unix(material, dist, folder):
+    """macOS: a zip holding Lumen.app; Linux: a tar.gz of the one-folder build. Both with notes and checksums."""
+    notes = ROOT / "build_tools" / ("README-macos.txt" if MACOS else "README-linux.txt")
+    if MACOS:
+        # The signed bundle must not gain files, so notes and the licence sit beside it in the archive.
+        staging = dist / f"Lumen-{__version__}-{TAG}-package"
+        shutil.rmtree(staging, ignore_errors=True)
+        staging.mkdir()
+        shutil.copytree(dist / "Lumen.app", staging / "Lumen.app", symlinks=True)
+        shutil.copy2(notes, staging / "READ-ME.txt")
+        shutil.copy2(ROOT / "LICENSE", staging / "LICENSE.txt")
+        shutil.copy2(material / "BUILD-INFO.json", staging / "BUILD-INFO.json")
+        archive = dist / f"Lumen-{__version__}-{TAG}.zip"
+        archive.unlink(missing_ok=True)
+        # ditto keeps the bundle's symlinks, permissions and code signature intact.
+        subprocess.run(["ditto", "-c", "-k", "--sequesterRsrc", str(staging), str(archive)], check=True)
+    else:
+        shutil.copy2(notes, folder / "READ-ME.txt")
+        shutil.copy2(ROOT / "LICENSE", folder / "LICENSE.txt")
+        shutil.copy2(material / "BUILD-INFO.json", folder / "BUILD-INFO.json")
+        shutil.copy2(material / "lumen.png", folder / "lumen.png")
+        shutil.copy2(ROOT / "build_tools" / "install-desktop-entry.sh", folder / "install-desktop-entry.sh")
+        (folder / "install-desktop-entry.sh").chmod(0o755)
+        archive = dist / f"{folder.name}.tar.gz"
+        with tarfile.open(archive, "w:gz") as tar:
+            tar.add(folder, arcname=folder.name)
+    (dist / f"SHA256SUMS-{__version__}-{TAG}.txt").write_text(f"{sha256(archive)}  {archive.name}\n", encoding="ascii")
+    print(json.dumps({archive.name: {"bytes": archive.stat().st_size, "sha256": sha256(archive)}}, indent=2))
 
 
 if __name__ == "__main__":

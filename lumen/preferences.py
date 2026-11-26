@@ -1,13 +1,33 @@
 """Portable preferences shared by startup and the main window."""
+import os
 from pathlib import Path
 import sys
 from PySide6.QtCore import QSettings
 
 
+def data_root() -> Path:
+    """Where preferences and saved annotations live.
+
+    From source and in the portable Windows build this is beside the program, so the
+    folder carries its own settings. A macOS app bundle must not be modified (that breaks
+    its signature) and a Linux install folder may be read only, so packaged builds there
+    use the per-user application-data folder.
+    """
+    if not getattr(sys, "frozen", False):
+        return Path(__file__).resolve().parent.parent
+    if sys.platform == "win32":
+        return Path(sys.executable).parent
+    if sys.platform == "darwin":
+        root = Path.home() / "Library" / "Application Support" / "Lumen DICOM"
+    else:
+        root = Path(os.environ.get("XDG_CONFIG_HOME") or Path.home() / ".config") / "lumen-dicom"
+    root.mkdir(parents=True, exist_ok=True)
+    return root
+
+
 def open_settings(path=None):
     if path is None:
-        root = Path(sys.executable).parent if getattr(sys, "frozen", False) else Path(__file__).resolve().parent.parent
-        path = root / ".lumen-settings.ini"
+        path = data_root() / ".lumen-settings.ini"
     return QSettings(str(path), QSettings.Format.IniFormat)
 
 

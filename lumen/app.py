@@ -40,7 +40,8 @@ from .model import functional
 from . import annotation_store, overlay
 from .preferences import open_settings, saved_theme
 from .branding import application_icon
-from .chrome import ClassicDockWidget as QDockWidget, ClassicTitleBar, install_native_frame, native_frame_event
+from .chrome import (ClassicDockWidget as QDockWidget, ClassicTitleBar, custom_frame, install_native_frame,
+                     native_frame_event)
 from .dialogs import QFileDialog, QMessageBox, install_dialog_style
 from .caption_icons import clear_glyph_cache
 
@@ -68,9 +69,10 @@ class MainWindow(QMainWindow):
         QApplication.instance().setWindowIcon(identity)
         self.setWindowIcon(identity)
         install_dialog_style()
-        self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+        if custom_frame():
+            self.setWindowFlag(Qt.WindowType.FramelessWindowHint, True)
+            self.setContentsMargins(3, 3, 3, 3)  # room for the drawn frame
         self.setObjectName("dicomViewer")
-        self.setContentsMargins(3, 3, 3, 3)
         self.setWindowTitle("Lumen · DICOM Viewer")
         self.resize(1520, 960)
         self.setMinimumSize(1120, 740)
@@ -125,9 +127,10 @@ class MainWindow(QMainWindow):
         layout = QVBoxLayout(header)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
-        self.title_bar = ClassicTitleBar(self)
+        self.title_bar = ClassicTitleBar(self, native=not custom_frame())
         self._application_menu_bar = QMenuBar(header)
-        self._application_menu_bar.setNativeMenuBar(False)
+        # macOS shows menus in the global menu bar at the top of the screen.
+        self._application_menu_bar.setNativeMenuBar(sys.platform == "darwin")
         layout.addWidget(self.title_bar)
         layout.addWidget(self._application_menu_bar)
         self.setMenuWidget(header)

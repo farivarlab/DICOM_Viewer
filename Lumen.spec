@@ -1,15 +1,21 @@
-# Reproducible Windows x64 one-file and one-folder builds, from an isolated environment.
+# Reproducible builds from an isolated environment: Windows x64 one-file and one-folder
+# executables, a macOS Lumen.app bundle, or a Linux one-folder build.
 from pathlib import Path
 import sys
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules, copy_metadata
 
 ROOT = Path(SPECPATH)
 sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(ROOT / "build_tools"))
 from lumen import __version__ as VERSION
+from release_info import platform_tag
 import dcm2niix
-converter = Path(dcm2niix.__file__).resolve().parent / "dcm2niix.exe"
+
+WINDOWS, MACOS = sys.platform == "win32", sys.platform == "darwin"
+TAG = platform_tag()
+converter = Path(dcm2niix.__file__).resolve().parent / ("dcm2niix.exe" if WINDOWS else "dcm2niix")
 if not converter.is_file():
-    raise RuntimeError("The Windows dcm2niix converter is missing from the build environment")
+    raise RuntimeError(f"The dcm2niix converter is missing from the build environment: {converter}")
 material = ROOT / "build" / "release_materials"
 hidden = ["gdcm", "_gdcm.gdcmswig", "_gdcm._gdcmswig", "jpeg_ls", "_CharLS"]
 hidden += collect_submodules("openjpeg")
@@ -28,12 +34,30 @@ a = Analysis(
     noarchive=False,
 )
 pyz = PYZ(a.pure)
-settings = dict(debug=False, strip=False, upx=False, console=False,
-    icon=str(material / "lumen.ico"), version=str(material / "version_info.txt"),
-    uac_admin=False, disable_windowed_traceback=False)
+settings = dict(debug=False, strip=False, upx=False, console=False, disable_windowed_traceback=False)
+if WINDOWS:
+    settings.update(icon=str(material / "lumen.ico"), version=str(material / "version_info.txt"), uac_admin=False)
+elif MACOS:
+    settings.update(icon=str(material / "lumen.png"))  # PyInstaller converts it to .icns
 
-standalone = EXE(pyz, a.scripts, a.binaries, a.datas, [],
-    name=f"Lumen-{VERSION}-win64", **settings)
-portable_exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Lumen", **settings)
-portable = COLLECT(portable_exe, a.binaries, a.datas,
-    strip=False, upx=False, name=f"Lumen-{VERSION}-portable-win64")
+if WINDOWS:
+    standalone = EXE(pyz, a.scripts, a.binaries, a.datas, [],
+        name=f"Lumen-{VERSION}-win64", **settings)
+    portable_exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Lumen", **settings)
+    portable = COLLECT(portable_exe, a.binaries, a.datas,
+        strip=False, upx=False, name=f"Lumen-{VERSION}-portable-win64")
+else:
+    executable = EXE(pyz, a.scripts, [], exclude_binaries=True, name="Lumen", **settings)
+    folder = COLLECT(executable, a.binaries, a.datas, strip=False, upx=False, name=f"Lumen-{VERSION}-{TAG}")
+    if MACOS:
+        app = BUNDLE(folder, name="Lumen.app", icon=str(material / "lumen.png"),
+            bundle_identifier="org.farivarlab.lumen", version=VERSION,
+            info_plist={
+                "CFBundleName": "Lumen",
+                "CFBundleDisplayName": "Lumen DICOM Viewer",
+                "CFBundleShortVersionString": VERSION,
+                "CFBundleVersion": VERSION,
+                "LSMinimumSystemVersion": "12.0",
+                "NSHighResolutionCapable": True,
+                "NSHumanReadableCopyright": "Not For Diagnostic Use. Research and education software.",
+            })

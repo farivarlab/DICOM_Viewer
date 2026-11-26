@@ -9,7 +9,7 @@ from PySide6.QtWidgets import (
 )
 
 from .branding import application_icon
-from .chrome import ClassicTitleBar, install_native_frame, native_frame_event
+from .chrome import ClassicTitleBar, custom_frame, install_native_frame, native_frame_event
 
 
 _constructing_dialogs = 0
@@ -28,6 +28,11 @@ def _dialog_constructor():
 
 def _install_caption(dialog, *, resizable=False, allow_maximize=False):
     if hasattr(dialog, "title_bar"):
+        return
+    if not custom_frame():
+        # The platform draws the caption; keep a hidden one so callers can rely on it.
+        dialog.setWindowIcon(application_icon())
+        dialog.title_bar = ClassicTitleBar(dialog, allow_minimize=False, allow_maximize=allow_maximize, native=True)
         return
     dialog._classic_resizable = resizable
     dialog._classic_allow_minimize = False

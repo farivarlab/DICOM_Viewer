@@ -1,5 +1,16 @@
 """Bind installer inputs to the runtime sources and executable that were built."""
 import hashlib
+import platform
+import sys
+
+
+def platform_tag():
+    """Release-asset platform name: win64, macos-arm64, macos-x86_64, linux-x86_64, …"""
+    if sys.platform == "win32":
+        return "win64"
+    machine = platform.machine().lower()
+    arch = {"amd64": "x86_64", "x86_64": "x86_64", "arm64": "arm64", "aarch64": "arm64"}.get(machine, machine)
+    return f"{'macos' if sys.platform == 'darwin' else 'linux'}-{arch}"
 
 
 def sha256(path):

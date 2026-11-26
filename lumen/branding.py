@@ -48,6 +48,8 @@ def application_icon() -> QIcon:
 
 def update_windows_icon(icon):
     """Generate the ICO and give Windows shortcuts a fresh icon cache identity."""
+    if os.name != "nt":
+        return None  # ICO files and .lnk shortcuts exist only on Windows
     images = []
     for size in ICON_SIZES:
         data = QByteArray()

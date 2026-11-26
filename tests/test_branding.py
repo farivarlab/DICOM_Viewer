@@ -1,6 +1,9 @@
 from pathlib import Path
 import json
 import subprocess
+import sys
+
+import pytest
 
 from PySide6.QtWidgets import QApplication
 from PIL import Image
@@ -52,6 +55,7 @@ def test_built_in_logo_identifies_every_surface_and_cannot_be_replaced(app, stud
         app.processEvents()
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows shortcuts and ICO files")
 def test_windows_shortcut_follows_changed_logo_without_changing_launch_options(app, tmp_path, monkeypatch):
     logo = tmp_path / "logo.svg"
     monkeypatch.setattr(branding, "LOGO_FILE", logo)
