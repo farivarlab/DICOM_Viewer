@@ -49,7 +49,7 @@ def cask(version, digests):
     strategy :github_latest
   end
 
-  depends_on macos: ">= :monterey"
+  depends_on macos: :monterey
 {only}
   app "Lumen.app"
 
