@@ -690,8 +690,19 @@ class MainWindow(QMainWindow):
         for series in scan.series:
             if series.uid in existing:
                 target = existing[series.uid]
-                target.paths = sorted(set(target.paths + series.paths))
-                target.files.update(series.files)
+                # The same instances imported again through another path (a second copy
+                # of a ZIP, a mapped drive) are already part of the series.
+                known = {info.sop for info in target.files.values() if info.sop}
+                for path in series.paths:
+                    info = series.files.get(path)
+                    if path in target.files or (info and info.sop and info.sop in known):
+                        continue
+                    target.paths.append(path)
+                    if info:
+                        target.files[path] = info
+                        if info.sop:
+                            known.add(info.sop)
+                target.paths.sort()
                 target.frames = sum(info.frames for info in target.files.values())
                 if target.number is None:
                     target.number = series.number

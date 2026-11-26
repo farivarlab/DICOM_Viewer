@@ -117,8 +117,6 @@ class VolumeView(QWidget):
         self.vtk_image = image
         self.mapper.SetInputData(image)
         self.volume.SetVisibility(True)
-        if data.series.modality != "CT":
-            self.preset = "Scalar"
         self.update_transfer()
         self.set_crop(self.crop)
         self.reset_camera()

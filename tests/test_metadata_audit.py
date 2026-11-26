@@ -60,3 +60,11 @@ def test_metadata_csv_preserves_formula_guarding(app, monkeypatch, tmp_path):
     assert rows[0] == ["Tag", "Name", "VR", "Value"]
     assert rows[1][3] == "'=SUM(1,2)"
     pane.close()
+
+
+def test_metadata_csv_keeps_numbers_and_guards_control_prefixes():
+    assert metadata.csv_cell("-1024") == "-1024"
+    assert metadata.csv_cell("+2.5e-3") == "+2.5e-3"
+    assert metadata.csv_cell("-cmd") == "'-cmd"
+    assert metadata.csv_cell("\t=1+1") == "'\t=1+1"
+    assert metadata.csv_cell("@SUM(A1)") == "'@SUM(A1)"

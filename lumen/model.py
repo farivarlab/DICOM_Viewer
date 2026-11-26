@@ -20,6 +20,7 @@ from scipy.ndimage import affine_transform
 Progress = Callable[[str], None]
 MAX_VOXELS = 100_000_000
 MAX_WINDOW_SAMPLES = 2_000_000
+RESAMPLE_SLAB_VOXELS = 4_000_000
 
 
 def first_number(value, fallback: float) -> float:
@@ -95,6 +96,7 @@ class FileInfo:
     path: Path
     frames: int = 1
     instance: int = 0
+    sop: str = ""
 
 
 @dataclass(frozen=True)
@@ -188,7 +190,8 @@ def scan_paths(paths: list[Path], progress: Progress = lambda _: None) -> ScanRe
             groups[uid].paths.append(path)
             count = frame_count(ds)
             groups[uid].frames += count
-            groups[uid].files[path] = FileInfo(path, count, int(first_number(getattr(ds, "InstanceNumber", 0), 0)))
+            groups[uid].files[path] = FileInfo(path, count, int(first_number(getattr(ds, "InstanceNumber", 0), 0)),
+                                               str(getattr(ds, "SOPInstanceUID", "")))
         except (OSError, ValueError, EOFError, AttributeError, TypeError):
             skipped += 1
     return ScanResult(sorted(groups.values(), key=lambda s: s.sort_key), skipped)
@@ -348,7 +351,11 @@ def _canonicalize(source: np.ndarray, affine: np.ndarray, progress: Progress):
     norms = np.linalg.norm(basis, axis=0)
     direction = basis / norms
     axes = np.argmax(np.abs(direction), axis=0)
-    aligned = len(set(axes)) == 3 and np.allclose(np.abs(direction), np.eye(3)[:, axes], atol=1e-6, rtol=0)
+    # Scanners often record a residual obliquity on orthogonal stacks. Treat it as aligned
+    # when it moves no corner by more than a tenth of the finest voxel; resampling such a
+    # stack would cost time, memory and in-plane detail without improving its geometry.
+    drift = np.abs(np.abs(direction) - np.eye(3)[:, axes]) @ (norms * (shape_xyz - 1))
+    aligned = len(set(axes)) == 3 and bool(np.all(drift <= .1 * norms.min()))
     spacing = np.full(3, norms.min())
     if aligned:
         for i in range(3):
@@ -369,11 +376,17 @@ def _canonicalize(source: np.ndarray, affine: np.ndarray, progress: Progress):
     target[:3, 3] = low
     mapping = np.linalg.inv(affine) @ target
     reverse = np.eye(3)[::-1]
-    progress("Reconstructing patient-coordinate volume…")
+    matrix, offset = reverse @ mapping[:3, :3] @ reverse, reverse @ mapping[:3, 3]
     minimum = float(np.nanmin(source))
-    output = affine_transform(source, reverse @ mapping[:3, :3] @ reverse,
-        reverse @ mapping[:3, 3], output_shape=tuple(int(n) for n in shape[::-1]),
-        output=np.float32, order=1, mode="constant", cval=minimum if math.isfinite(minimum) else 0., prefilter=False)
+    output = np.empty(tuple(int(n) for n in shape[::-1]), np.float32)
+    # Resample in slabs so progress, and with it cancellation, is reached regularly.
+    # Linear interpolation without prefiltering is pointwise, so slabs match one pass.
+    step = max(1, RESAMPLE_SLAB_VOXELS // (output.shape[1] * output.shape[2]))
+    for start in range(0, len(output), step):
+        progress(f"Reconstructing patient-coordinate volume · {100 * start // len(output)}%")
+        slab = output[start:start + step]
+        affine_transform(source, matrix, offset + matrix[:, 0] * start, output_shape=slab.shape, output=slab,
+                         order=1, mode="constant", cval=minimum if math.isfinite(minimum) else 0., prefilter=False)
     return output, tuple(spacing), tuple(low)
 
 

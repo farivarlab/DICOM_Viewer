@@ -1,4 +1,5 @@
 import csv
+import re
 from PySide6.QtCore import Qt, QAbstractTableModel, QModelIndex, QSortFilterProxyModel
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLineEdit, QLabel, QPushButton,
@@ -6,6 +7,14 @@ from PySide6.QtWidgets import (
 )
 from .icons import icon
 from .dialogs import QFileDialog, QMessageBox
+
+FORMULA_PREFIXES = ("=", "+", "-", "@", "\t", "\r")
+NUMBER = re.compile(r"[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?")
+
+
+def csv_cell(value):
+    """Keep spreadsheets from evaluating a value as a formula; plain numbers stay numbers."""
+    return "'" + value if value.startswith(FORMULA_PREFIXES) and not NUMBER.fullmatch(value) else value
 
 
 class MetadataModel(QAbstractTableModel):
@@ -144,6 +153,6 @@ class MetadataPane(QWidget):
                 with open(path, "w", newline="", encoding="utf-8-sig") as stream:
                     writer = csv.writer(stream)
                     writer.writerow(["Tag", "Name", "VR", "Value"] if self.model.headers == list(self.model.HEADERS) else self.model.headers)
-                    writer.writerows(tuple("'" + v if v.startswith(("=", "+", "-", "@")) else v for v in row) for row in self.rows)
+                    writer.writerows(tuple(csv_cell(v) for v in row) for row in self.rows)
             except OSError as exc:
                 QMessageBox.warning(self, "Export failed", str(exc))

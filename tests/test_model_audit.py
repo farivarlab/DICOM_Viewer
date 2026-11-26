@@ -156,3 +156,39 @@ def test_mixed_physical_units_cannot_form_one_volume(tmp_path):
     data = load_series(scan_paths([tmp_path]).series[0])
     assert not data.mpr_available
     assert "Mixed physical value units" in data.geometry_note
+
+
+def test_residual_obliquity_keeps_the_native_volume(tmp_path):
+    # Scanners commonly write tiny cosines on orthogonal stacks; resampling them
+    # would only cost memory and detail.
+    data = load_series(stack(tmp_path, orientation=(1, 2e-5, 0, -2e-5, 1, 0)), reconstruct=False)
+    data.prepare_mpr()
+    assert np.shares_memory(data.canonical, data.source)
+
+
+def test_oblique_reconstruction_in_slabs_matches_one_pass_and_can_stop(monkeypatch):
+    from scipy.ndimage import affine_transform
+    from lumen import model
+    source = np.random.default_rng(1).random((6, 20, 24)).astype(np.float32)
+    c = 2 ** -.5
+    affine = np.eye(4)
+    affine[:3, :3] = [[c, -c, 0], [c, c, 0], [0, 0, 3]]
+    monkeypatch.setattr(model, "MAX_VOXELS", 10 ** 9)
+    whole, spacing, origin = model._canonicalize(source, affine, lambda _: None)
+    target = np.eye(4)
+    target[:3, :3] = np.diag(spacing)
+    target[:3, 3] = origin
+    mapping = np.linalg.inv(affine) @ target
+    reverse = np.eye(3)[::-1]
+    expected = affine_transform(source, reverse @ mapping[:3, :3] @ reverse, reverse @ mapping[:3, 3],
+                                output_shape=whole.shape, output=np.float32, order=1, mode="constant",
+                                cval=float(source.min()), prefilter=False)
+    np.testing.assert_array_equal(whole, expected)
+
+    # One output slice per slab: identical result, and progress (the cancellation
+    # point) is reached between slabs rather than only before the whole resampling.
+    monkeypatch.setattr(model, "RESAMPLE_SLAB_VOXELS", 1)
+    messages = []
+    sliced, _, _ = model._canonicalize(source, affine, messages.append)
+    np.testing.assert_array_equal(sliced, whole)
+    assert len(messages) == len(whole)

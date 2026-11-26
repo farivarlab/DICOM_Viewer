@@ -137,3 +137,19 @@ def test_duplicate_file_alias_selects_correct_source_frame(window, app, tmp_path
     data = install(window, (series, load_series(series)), app)
     window.open_target(Target(series.uid, "file", tmp_path / "duplicate.dcm"))
     assert window.source_index == 1
+
+
+def test_reimporting_the_same_instances_does_not_duplicate_files(window, app, tmp_path):
+    import shutil
+    first, second = tmp_path / "first", tmp_path / "second"
+    first.mkdir()
+    uid = generate_uid()
+    for index in range(2):
+        write_image(first / f"{index}.dcm", np.zeros((8, 12)), (0, 0, index * 4), series_uid=uid, instance=index + 1)
+    shutil.copytree(first, second)
+    for folder in (first, second):
+        window.imported((scan_paths([folder]), []))
+        wait_for_idle(window, app)
+    series = next(s for s in window.series if s.uid == uid)
+    assert len(series.paths) == len(series.files) == 2
+    assert series.frames == 2

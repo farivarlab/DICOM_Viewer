@@ -74,7 +74,15 @@ def scan_inputs(paths, progress=lambda _: None):
     result = scan_paths(sorted(candidates - set(nifti_paths)), progress)
     for path in nifti_paths:
         progress(f"Indexing NIfTI · {path.name}")
-        result.series.extend(scan_nifti(path))
+        try:
+            result.series.extend(scan_nifti(path))
+        except Exception:
+            # NiBabel raises several unrelated types for unreadable files. Like an
+            # unreadable DICOM, one bad file must not discard the rest of a folder;
+            # a NIfTI opened on its own still reports why it cannot be shown.
+            if len(candidates) == 1:
+                raise
+            result.skipped += 1
     return result
 
 
@@ -154,7 +162,10 @@ def _publish(files, destination, overwrite):
     stem = destination.name[:-7] if destination.name.lower().endswith(".nii.gz") else destination.stem
     approved = {destination.name}
     if destination.exists():
-        approved.update(stem + extension for extension in (".json", ".bval", ".bvec"))
+        # A confirmed overwrite replaces the whole earlier export: its sidecars and the
+        # additional images dcm2niix names after the same stem, e.g. stem_e2.nii.gz.
+        approved.update(target.name for target in targets
+                        if target.name.startswith((stem + ".", stem + "_")))
     for target in targets:
         if target.exists() and (not overwrite or target.name not in approved):
             raise FileExistsError(f"Export already exists: {target.name}")

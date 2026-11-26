@@ -196,3 +196,32 @@ def test_new_export_does_not_replace_an_unrelated_sidecar(tmp_path):
         _publish(sorted(output.iterdir()), tmp_path / "volume.nii.gz", overwrite=True)
     assert sidecar.read_bytes() == b"unrelated existing JSON"
     assert not (tmp_path / "volume.nii.gz").exists()
+
+
+def test_unreadable_nifti_is_skipped_within_a_folder(tmp_path):
+    write_nifti(tmp_path / "good.nii.gz")
+    (tmp_path / "broken.nii").write_bytes(b"not a nifti")
+    result = scan_inputs([tmp_path])
+    assert [series.description for series in result.series] == ["good.nii.gz"]
+    assert result.skipped == 1
+
+
+def test_unreadable_nifti_opened_alone_reports_why(tmp_path):
+    broken = tmp_path / "broken.nii"
+    broken.write_bytes(b"not a nifti")
+    with pytest.raises(Exception, match="file type"):
+        scan_inputs([broken])
+
+
+def test_confirmed_overwrite_replaces_every_output_of_the_earlier_export(tmp_path):
+    from lumen.nifti import _publish
+    output = tmp_path / "staged"
+    output.mkdir()
+    names = ("volume.nii.gz", "volume.json", "volume_e2.nii.gz", "volume_e2.json")
+    for name in names:
+        (output / name).write_bytes(b"first")
+    _publish(sorted(output.iterdir()), tmp_path / "volume.nii.gz", overwrite=True)
+    for name in names:
+        (output / name).write_bytes(b"second")
+    _publish(sorted(output.iterdir()), tmp_path / "volume.nii.gz", overwrite=True)
+    assert all((tmp_path / name).read_bytes() == b"second" for name in names)

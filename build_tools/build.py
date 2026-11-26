@@ -36,11 +36,30 @@ def main():
     args = parser.parse_args()
     if sys.platform != "win32":
         raise SystemExit("Build this Windows release on 64-bit Windows with Python 3.12.")
+    # The source archive is taken from HEAD, so it only corresponds to the binaries
+    # when every runtime input is committed.
+    require_committed_sources()
     material = ROOT / "build" / "release_materials"
     material.mkdir(parents=True, exist_ok=True)
     if not args.finalize_only:
         build_binaries(material)
     finalize_release(material)
+
+
+RUNTIME_SOURCES = ("launch_lumen.py", "Lumen.spec", "logo.svg", "requirements.txt", "requirements-build.txt",
+                   "lumen", "build_tools")
+
+
+def git(*arguments):
+    return subprocess.run(["git", "-c", f"safe.directory={ROOT.as_posix()}", "-C", str(ROOT), *arguments],
+                          check=True, capture_output=True, text=True).stdout
+
+
+def require_committed_sources():
+    changes = git("status", "--porcelain", "--", *RUNTIME_SOURCES)
+    if changes.strip():
+        raise SystemExit("Commit the runtime sources before building a release, so the source archive "
+                         "matches the binaries:\n" + changes)
 
 
 def build_binaries(material):
@@ -65,7 +84,7 @@ def build_binaries(material):
         raise RuntimeError("Runtime sources changed during compilation; rebuild before releasing.")
     payload = ROOT / "dist" / f"Lumen-{__version__}-portable-win64"
     (material / "BUILD-INFO.json").write_text(json.dumps({
-        "version": __version__, "runtime_digest": fingerprint,
+        "version": __version__, "runtime_digest": fingerprint, "commit": git("rev-parse", "HEAD").strip(),
         "executable_sha256": sha256(payload / "Lumen.exe"),
     }, indent=2), encoding="utf-8")
 
@@ -74,6 +93,9 @@ def build_binaries(material):
 def finalize_release(material):
     dist = ROOT / "dist"
     folder = dist / f"Lumen-{__version__}-portable-win64"
+    built = json.loads((material / "BUILD-INFO.json").read_text(encoding="utf-8")).get("commit")
+    if built != git("rev-parse", "HEAD").strip():
+        raise SystemExit("The binaries were built from a different commit than HEAD; rebuild before releasing.")
     shutil.copy2(ROOT / "PORTABLE.txt", folder / "READ-ME.txt")
     shutil.copy2(material / "BUILD-INFO.json", folder / "BUILD-INFO.json")
     shutil.copy2(ROOT / "logo.svg", folder / "logo.svg")
@@ -82,8 +104,7 @@ def finalize_release(material):
     shutil.copytree(material / "THIRD_PARTY", folder / "THIRD_PARTY", dirs_exist_ok=True)
     shutil.make_archive(str(folder), "zip", root_dir=dist, base_dir=folder.name)
     source_zip = dist / f"Lumen-{__version__}-source.zip"
-    subprocess.run(["git", "-c", f"safe.directory={ROOT.as_posix()}", "-C", str(ROOT), "archive", "--format=zip",
-                    f"--output={source_zip}", "HEAD"], check=True)
+    git("archive", "--format=zip", f"--output={source_zip}", "HEAD")
     shutil.copy2(ROOT / "logo.svg", dist / "logo.svg")
     shutil.copy2(ROOT / "PORTABLE.txt", dist / "READ-ME.txt")
     if (ROOT / "LICENSE").is_file():

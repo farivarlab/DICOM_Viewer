@@ -19,6 +19,8 @@ app = QApplication([])
 app.setStyle("Fusion")
 output = Path("artifacts/colorbar")
 output.mkdir(parents=True, exist_ok=True)
+# The run ends by hiding the colorbar, which is saved; start each run from defaults.
+(output / "preview.ini").unlink(missing_ok=True)
 window = MainWindow(settings_path=output / "preview.ini")
 window.set_theme("cockpit", persist=False)
 window.show()
