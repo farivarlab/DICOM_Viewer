@@ -27,6 +27,17 @@
       "archive_sha256": "cac56100de60aba8ef9ff3af5befb5307a99e425864544ce8277df056c1e20a6",
       "notice_files": 17,
       "unresolved_attribution_references": []
+    },
+    {
+      "component": "pyjpegls",
+      "repository": "https://github.com/pydicom/pyjpegls",
+      "ref": "1.5.1",
+      "archive_url": "https://pypi.org/project/pyjpegls/1.5.1/#files",
+      "archive": "pyjpegls-1.5.1-cp312-cp312-win_amd64.whl",
+      "archive_sha256": "14d7cf5e61ffdb9343a888dde5e3f9b7e527cc805c31c7f48a1e2cdb73d9d9fa",
+      "notice_files": 1,
+      "unresolved_attribution_references": [],
+      "note": "The macOS and Linux wheels of this release omit the licence file; this is the text from the Windows wheel."
     }
   ],
   "files": [
@@ -1589,6 +1600,14 @@
       "source_url": "https://raw.githubusercontent.com/malaterre/GDCM/v3.2.6/Utilities/socketxx/COPYING",
       "local_file": "GDCM/Utilities/socketxx/COPYING",
       "sha256": "6f5d04f1e620b33204e5b3895805dc5cdf8f21bd3e3a9e374d7bb31734849214"
+    },
+    {
+      "component": "pyjpegls",
+      "ref": "1.5.1",
+      "source_file": "pyjpegls-1.5.1.dist-info/license.txt",
+      "source_url": "https://pypi.org/project/pyjpegls/1.5.1/#files",
+      "local_file": "pyjpegls/license.txt",
+      "sha256": "31d11ddd5cfd55534951f4cfb3540ae9596f29b60cacc8d879d601109d92d5ef"
     }
   ]
 }

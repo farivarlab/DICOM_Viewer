@@ -32,7 +32,8 @@ VENDORED = Path(__file__).resolve().parent / "licenses"
 # is reproduced from the vendored Qt sources, because their wheels lack the texts.
 _QT_LICENSES = ("QtBase/LICENSES/LGPL-3.0-only.txt", "QtBase/LICENSES/GPL-2.0-only.txt",
                 "QtBase/LICENSES/GPL-3.0-only.txt")
-VENDORED_LICENSES = {"PySide6-Essentials": _QT_LICENSES, "shiboken6": _QT_LICENSES}
+VENDORED_LICENSES = {"PySide6-Essentials": _QT_LICENSES, "shiboken6": _QT_LICENSES,
+                     "pyjpegls": ("pyjpegls/license.txt",)}  # macOS/Linux wheels omit it
 
 
 def is_notice_file(relative: Path) -> bool:
