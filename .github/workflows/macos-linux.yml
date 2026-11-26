@@ -9,8 +9,6 @@ on:
       tag:
         description: "Existing release tag to build and upload to, e.g. v0.4.2 (empty: build only)"
         required: false
-  push:
-    branches: [cross-platform]
 
 permissions:
   contents: write
